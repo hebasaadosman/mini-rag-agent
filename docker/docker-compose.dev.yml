@@ -1,0 +1,55 @@
+services:
+  fastapi:
+    build:
+      context: ..
+      dockerfile: docker/mini_rag/Dockerfile
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  pgvector:
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  qdrant:
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    restart: unless-stopped
+
+  nginx:
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
+  prometheus:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  node-exporter:
+    ports:
+      - "9100:9100"
+    restart: unless-stopped
+
+  postgres-exporter:
+    ports:
+      - "9187:9187"
+    restart: unless-stopped
+
+  rabbitmq:
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  redis:
+    ports:
+      - "6379:6379"

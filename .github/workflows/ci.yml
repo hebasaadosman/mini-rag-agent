@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: src/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r src/requirements.txt
+
+      - name: Run unit tests
+        env:
+          PYTHONPATH: src
+        run: python -m unittest discover -s tests -v
+
+      - name: Compile Python source
+        run: |
+          python -m compileall -q src
+
+      - name: Validate Docker Compose
+        working-directory: docker
+        run: |
+          cp env/.env.app.example env/.env.app
+          cp env/.env.postgres.example env/.env.postgres
+          cp env/.env.grafana.example env/.env.grafana
+          cp env/.env.postgres-exporter.example env/.env.postgres-exporter
+          cp env/.env.rabbitmq.example env/.env.rabbitmq
+          cp env/.env.redis.example env/.env.redis
+
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.dev.yml \
+            config > /dev/null
+
+      - name: Build FastAPI Docker image
+        run: |
+          docker build \
+            -f docker/mini_rag/Dockerfile \
+            -t mini-rag:ci \
+            .

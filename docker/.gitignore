@@ -1,0 +1,13 @@
+# Local Docker environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+env/.env.*
+!env/.env.*.example
+
+# Generated production image selection
+.env.production
+
+# Local Alembic configuration
+mini_rag/alembic.ini

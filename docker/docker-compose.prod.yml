@@ -1,0 +1,80 @@
+services:
+  fastapi:
+    image: ${APP_IMAGE:?APP_IMAGE must be set}
+    build: !reset null
+    environment:
+      APP_ENV: production
+    ports: !override []
+    restart: always
+
+  celery-file-worker:
+    image: ${APP_IMAGE:?APP_IMAGE must be set}
+    build: !reset null
+    restart: always
+
+  celery-index-worker:
+    image: ${APP_IMAGE:?APP_IMAGE must be set}
+    build: !reset null
+    restart: always
+
+  celery-maintenance-worker:
+    image: ${APP_IMAGE:?APP_IMAGE must be set}
+    build: !reset null
+    restart: always
+
+  celery-beat:
+    image: ${APP_IMAGE:?APP_IMAGE must be set}
+    build: !reset null
+    restart: always
+
+  flower:
+    image: ${APP_IMAGE:?APP_IMAGE must be set}
+    build: !reset null
+    ports: !override
+      - "127.0.0.1:5555:5555"
+    restart: always
+
+  pgvector:
+    ports: !override
+      - "127.0.0.1:5432:5432"
+    restart: always
+
+  qdrant:
+    ports: !override
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
+    restart: always
+
+  prometheus:
+    ports: !override
+      - "127.0.0.1:9090:9090"
+    restart: always
+
+  grafana:
+    environment:
+      GF_SERVER_ROOT_URL: "http://16.170.95.79/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    ports: !override
+      - "127.0.0.1:3000:3000"
+    restart: always
+
+  node-exporter:
+    ports: !override
+      - "127.0.0.1:9100:9100"
+    restart: always
+
+  postgres-exporter:
+    ports: !override
+      - "127.0.0.1:9187:9187"
+    restart: always
+
+  rabbitmq:
+    ports: !override
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    restart: always
+
+  redis:
+    ports: !override
+      - "127.0.0.1:6379:6379"
+    restart: always

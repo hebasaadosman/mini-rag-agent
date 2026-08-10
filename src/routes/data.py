@@ -1,0 +1,87 @@
+
+from fastapi import FastAPI,Request, APIRouter,Depends,UploadFile,status,Request
+from fastapi.responses import JSONResponse
+import aiofiles
+from helpers.config import get_settings, Settings
+import os
+from controllers import DataController
+from models import ResponseSignals
+import logging
+from models.db_schemes import  Asset
+from .schemes.data import ProcessRequest
+from models.ProjectModel import ProjectModel
+from models.ChunkModel import ChunkModel
+from models.AssetModel import AssetModel
+from models.enums import AssetTypeEnum
+from controllers import NLPController
+from tasks.file_processing import process_project_files
+
+logger = logging.getLogger("uvicorn.error")
+data_controller = DataController()
+data_router = APIRouter(
+    prefix="/api/v1/data",
+    tags=["data"],
+)
+
+@data_router.post("/upload/{project_id}")
+
+async def upload_data(request: Request, project_id: int, file: UploadFile, app_settings: Settings = Depends(get_settings)):
+
+    project_model = await ProjectModel.create_instance(request.app.db_client) 
+    project = await project_model.get_project_or_create_one(project_id=project_id)
+    is_valid, signal = await data_controller.validate_uploaded_file(file)
+    if not is_valid:
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"signal": signal})
+    
+    file_id, file_path = data_controller.generate_unique_filepath(original_filename=file.filename, project_id=project_id)
+    try:
+        async with aiofiles.open(file_path, "wb") as f:
+            while chunk := await file.read(app_settings.FILE_DEFAULT_CHUNK_SIZE):
+                await f.write(chunk)
+        asset_model = await AssetModel.create_instance(request.app.db_client)
+        asset = Asset(
+            asset_name=file_id,
+            asset_size=os.path.getsize(file_path),
+            asset_project_id=project.project_id,
+            asset_type=AssetTypeEnum.FILE.value,
+        )
+        asset_record = await asset_model.create_asset(asset)
+        
+    except Exception as e:
+        logger.error(f"Error occurred while uploading file: {e}")
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"signal": ResponseSignals.FILE_UPLOAD_FAILED.value, "error": str(e)})
+
+
+    return JSONResponse(
+    status_code=status.HTTP_200_OK,
+    content={
+        "signal": ResponseSignals.FILE_UPLOAD_SUCCESS.value,
+        "asset_id": asset_record.asset_id,
+        "asset_name": asset_record.asset_name,
+        "file_path": str(file_path),
+        "file_size": asset_record.asset_size,
+    },
+)
+
+
+
+@data_router.post("/process/{project_id}")
+async def process_endpoint(request: Request, project_id: int, process_request: ProcessRequest, app_settings: Settings = Depends(get_settings)):
+   chunk_size = process_request.chunk_size
+   overlap_size = process_request.overlap_size
+   do_reset = process_request.do_reset
+
+   task = process_project_files.delay(
+        project_id=project_id,
+        asset_id=process_request.asset_id,
+        chunk_size=chunk_size,
+        overlap_size=overlap_size,
+        do_reset=do_reset,
+    )
+
+   return JSONResponse(
+        content={
+            "signal": ResponseSignals.FILE_PROCESS_SUCCESS.value,
+            "task_id": task.id
+        }
+    )

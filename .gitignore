@@ -1,0 +1,85 @@
+# Operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors and IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+
+# Python environments
+.venv/
+venv/
+/env/
+
+# Coverage, packaging, and build output
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Local environment and secret files
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.env
+*.env.*
+!*.env.example
+!*.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+credentials*.json
+secrets*.json
+
+# Logs and temporary files
+*.log
+logs/
+tmp/
+temp/
+.cache/
+
+# Local databases and runtime state
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+qdrant_db/
+celerybeat-schedule*
+src/assets/files/
+src/assets/database/
+docker/grafana-data/
+docker/prometheus-data/
+
+# Generated evaluation reports
+src/evals/**/reports/*.json
+
+# Local migration configuration generated from examples
+docker/mini_rag/alembic.ini
+src/models/db_schemes/mini_rag/alembic.ini
+
+# Local installers
+Miniconda3-latest-Linux-x86_64.sh

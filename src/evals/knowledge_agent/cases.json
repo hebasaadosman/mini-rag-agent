@@ -1,0 +1,193 @@
+[
+  {
+    "id": "level_0_greeting",
+    "level": 0,
+    "title": "General greeting without tools",
+    "message": "السلام عليكم",
+    "expected_tools": [],
+    "allow_extra_tools": false,
+    "expected_iterations_max": 1,
+    "expected_answer_contains_any": [
+      "وعليكم",
+      "السلام"
+    ],
+    "expected_answer_contains_all": [],
+    "require_used_chunks": false
+  },
+  {
+    "id": "level_0_general_knowledge",
+    "level": 0,
+    "title": "General knowledge without tools",
+    "message": "ما عاصمة فرنسا؟",
+    "expected_tools": [],
+    "allow_extra_tools": false,
+    "expected_iterations_max": 1,
+    "expected_answer_contains_any": [
+      "باريس",
+      "Paris"
+    ],
+    "expected_answer_contains_all": [],
+    "require_used_chunks": false
+  },
+  {
+    "id": "level_1_count_assets",
+    "level": 1,
+    "title": "List project asset count",
+    "message": "كم عدد الملفات الموجودة في المشروع؟",
+    "expected_tools": [
+      "list_project_assets"
+    ],
+    "allow_extra_tools": false,
+    "expected_iterations_max": 2,
+    "expected_answer_contains_any": [
+      "3",
+      "ثلاث"
+    ],
+    "expected_answer_contains_all": [],
+    "require_used_chunks": false
+  },
+  {
+    "id": "level_1_list_pdf_assets",
+    "level": 1,
+    "title": "List PDF project assets",
+    "message": "اعرض أسماء ملفات PDF فقط.",
+    "expected_tools": [
+      "list_project_assets"
+    ],
+    "allow_extra_tools": false,
+    "expected_iterations_max": 2,
+    "expected_answer_contains_any": [
+      ".pdf",
+      "PDF"
+    ],
+    "expected_answer_contains_all": [],
+    "require_used_chunks": false
+  },
+  {
+    "id": "level_1_document_fact",
+    "level": 1,
+    "title": "Search document content",
+    "message": "ما الحد الأقصى لأيام العمل عن بعد؟",
+    "expected_tools": [
+      "search_project_chunks"
+    ],
+    "allow_extra_tools": false,
+    "expected_iterations_max": 2,
+    "expected_answer_contains_any": [
+      "يومين",
+      "يومان",
+      "2"
+    ],
+    "expected_answer_contains_all": [],
+    "require_used_chunks": true
+  },
+  {
+    "id": "level_1_asset_details_by_id",
+    "level": 1,
+    "title": "Get asset details directly by ID",
+    "message": "اعرض تفاصيل الملف رقم 7.",
+    "expected_tools": [
+      "get_asset_details"
+    ],
+    "allow_extra_tools": false,
+    "expected_iterations_max": 2,
+    "expected_answer_contains_any": [
+      "104,483",
+      "104483",
+      "iLrExHjAm3DU"
+    ],
+    "expected_answer_contains_all": [],
+    "require_used_chunks": false
+  },
+  {
+    "id": "level_1_read_asset_by_id",
+    "level": 1,
+    "title": "Read asset directly by ID",
+    "message": "لخص محتوى الملف رقم 7.",
+    "expected_tools": [
+      "read_asset"
+    ],
+    "allow_extra_tools": false,
+    "expected_iterations_max": 2,
+    "expected_answer_contains_any": [
+      "سياسة",
+      "شركة نور",
+      "العمل عن بعد"
+    ],
+    "expected_answer_contains_all": [],
+    "require_used_chunks": false
+  },
+  {
+    "id": "level_2_search_asset_name",
+    "level": 2,
+    "title": "Resolve assets by partial name",
+    "message": "هل يوجد ملف يحتوي اسمه على rag_test؟",
+    "expected_tools": [
+      "search_assets_by_name"
+    ],
+    "allow_extra_tools": false,
+    "expected_iterations_max": 2,
+    "expected_answer_contains_any": [
+      "rag_test",
+      "3",
+      "ثلاث"
+    ],
+    "expected_answer_contains_all": [],
+    "require_used_chunks": false
+  },
+  {
+    "id": "level_3_name_to_details",
+    "level": 3,
+    "title": "Resolve exact file name then retrieve details",
+    "message": "ابحث عن الملف iLrExHjAm3DU_rag_test_document_ar.pdf واعرض تفاصيله.",
+    "expected_tools": [
+      "search_assets_by_name",
+      "get_asset_details"
+    ],
+    "allow_extra_tools": false,
+    "expected_iterations_max": 3,
+    "expected_answer_contains_any": [
+      "104,483",
+      "104483"
+    ],
+    "expected_answer_contains_all": [
+      "iLrExHjAm3DU_rag_test_document_ar.pdf"
+    ],
+    "require_used_chunks": false
+  },
+  {
+    "id": "level_4_name_to_summary",
+    "level": 4,
+    "title": "Resolve exact file name then summarize content",
+    "message": "لخص الملف iLrExHjAm3DU_rag_test_document_ar.pdf.",
+    "expected_tools": [
+      "search_assets_by_name",
+      "read_asset"
+    ],
+    "allow_extra_tools": false,
+    "expected_iterations_max": 3,
+    "expected_answer_contains_any": [
+      "سياسة العمل",
+      "شركة نور",
+      "أمن المعلومات"
+    ],
+    "expected_answer_contains_all": [],
+    "require_used_chunks": false
+  },
+  {
+    "id": "level_4_content_transformation",
+    "level": 4,
+    "title": "Generate questions and answers from one document",
+    "message": "حوّل الملف iLrExHjAm3DU_rag_test_document_ar.pdf إلى 5 أسئلة وأجوبة.",
+    "expected_tools": [
+      "search_assets_by_name",
+      "read_asset"
+    ],
+    "allow_extra_tools": false,
+    "expected_iterations_max": 3,
+    "expected_answer_contains_any": [],
+    "expected_answer_contains_all": [],
+    "expected_question_marks": 5,
+    "require_used_chunks": false
+  }
+]
