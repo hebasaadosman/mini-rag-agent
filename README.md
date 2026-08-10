@@ -144,7 +144,7 @@ mini-rag/
 
 ```bash
 git clone https://github.com/hebasaadosman/mini-rag-agent.git
-cd mini-rag
+cd mini-rag-agent
 ```
 
 ### 2. Create local environment files
