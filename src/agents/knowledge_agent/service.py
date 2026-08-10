@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from typing import Any
 
 from .graph import KnowledgeAgentGraph
@@ -56,6 +57,33 @@ class KnowledgeAgent:
             thread_id=thread_id,
             response=response,
         )
+
+    async def stream(
+        self,
+        *,
+        thread_id: str,
+        project_id: int,
+        user_message: str,
+        system_prompt: str,
+    ) -> AsyncIterator[dict[str, Any]]:
+        async for event in self._graph_agent.stream(
+            thread_id=thread_id,
+            user_message=user_message,
+            system_prompt=system_prompt,
+        ):
+            yield event
+
+    async def stream_resume(
+        self,
+        *,
+        thread_id: str,
+        response: str,
+    ) -> AsyncIterator[dict[str, Any]]:
+        async for event in self._graph_agent.stream_resume(
+            thread_id=thread_id,
+            response=response,
+        ):
+            yield event
 
     async def get_memory(self, *, thread_id: str) -> dict[str, Any]:
         return await self._graph_agent.get_memory(thread_id=thread_id)

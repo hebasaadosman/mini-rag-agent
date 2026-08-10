@@ -378,7 +378,9 @@ All endpoints are documented interactively at `/docs`.
 | `POST` | `/api/v1/nlp/index/answer/{project_id}` | Run the direct RAG answer flow |
 | `POST` | `/api/v1/workflow/process-and-push/{project_id}` | Chain processing and indexing |
 | `POST` | `/api/v1/agents/knowledge/{project_id}/chat` | Chat with the knowledge agent |
+| `POST` | `/api/v1/agents/knowledge/{project_id}/chat/stream` | Stream agent progress and answer tokens over SSE |
 | `POST` | `/api/v1/agents/knowledge/{project_id}/chat/resume` | Resume a paused clarification |
+| `POST` | `/api/v1/agents/knowledge/{project_id}/chat/resume/stream` | Resume a paused clarification over SSE |
 | `GET` | `/api/v1/agents/knowledge/{project_id}/memory/{thread_id}` | Inspect thread memory metadata |
 | `DELETE` | `/api/v1/agents/knowledge/{project_id}/memory/{thread_id}` | Preview or confirm memory deletion |
 | `GET` | `/api/v1/agents/debug/tools/assets/{project_id}` | Development-only asset-tool inspection |
@@ -525,6 +527,35 @@ A completed request returns an answer, source metadata, iteration count, and mem
 
 Use the same `thread_id` for natural follow-up questions. Use a different `thread_id` to start an isolated conversation.
 
+#### Stream agent progress and answer tokens
+
+Use `curl -N` to disable client-side buffering and observe each Server-Sent Event as it arrives:
+
+```bash
+curl -N -X POST \
+  "http://127.0.0.1:8000/api/v1/agents/knowledge/1/chat/stream" \
+  -H "Accept: text/event-stream" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Summarize the uploaded policy.",
+    "thread_id": "stream-demo-001"
+  }'
+```
+
+The stream emits named events without exposing prompts, tool arguments, or raw tool results:
+
+```text
+event: started
+event: heartbeat
+event: status
+event: tool_started
+event: tool_completed
+event: token
+event: completed
+```
+
+`completed`, `clarification_required`, and `error` are terminal events whose `data` contains the normal `KnowledgeAgentResponse`. OpenAI and Cohere implement the same provider-level streaming contract. Swagger documents the endpoints, but a buffering client may not render incremental events; use `curl -N` or a streaming HTTP client for verification.
+
 ### 4. Handle an ambiguous request
 
 If the agent cannot safely select a document, it pauses and returns structured clarification:
@@ -553,6 +584,19 @@ Resume with the same project and thread. When options are present, send one of t
 ```bash
 curl -X POST \
   "http://127.0.0.1:8000/api/v1/agents/knowledge/1/chat/resume" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "thread_id": "demo-thread-001",
+    "response": "asset-id_first-report.pdf"
+  }'
+```
+
+The streaming equivalent uses the same payload and checkpoint:
+
+```bash
+curl -N -X POST \
+  "http://127.0.0.1:8000/api/v1/agents/knowledge/1/chat/resume/stream" \
+  -H "Accept: text/event-stream" \
   -H "Content-Type: application/json" \
   -d '{
     "thread_id": "demo-thread-001",

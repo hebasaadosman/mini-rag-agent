@@ -2,6 +2,9 @@ import json
 from json import JSONDecodeError
 from typing import Any
 
+from langchain_core.runnables import RunnableConfig
+from langgraph.config import get_stream_writer
+
 from ..state import KnowledgeAgentState
 
 
@@ -25,6 +28,7 @@ class ExecuteToolNode:
     async def __call__(
         self,
         state: KnowledgeAgentState,
+        config: RunnableConfig,
     ) -> dict[str, Any]:
         model_response = (
             state.get("model_response")
@@ -39,6 +43,10 @@ class ExecuteToolNode:
         pending_executions: list[
             dict[str, Any]
         ] = []
+        streaming = bool(
+            config.get("configurable", {}).get("streaming")
+        )
+        writer = get_stream_writer() if streaming else None
 
         for tool_index, tool_call in enumerate(
             tool_calls,
@@ -63,6 +71,15 @@ class ExecuteToolNode:
             )
 
             tool_arguments: dict[str, Any] = {}
+
+            if writer is not None:
+                writer(
+                    {
+                        "kind": "tool_started",
+                        "tool_name": tool_name,
+                        "iteration": state.get("iterations", 0),
+                    }
+                )
 
             try:
                 tool_arguments = (
@@ -107,6 +124,15 @@ class ExecuteToolNode:
                             "error": str(exc),
                         },
                     )
+            if writer is not None:
+                writer(
+                    {
+                        "kind": "tool_completed",
+                        "tool_name": tool_name,
+                        "iteration": state.get("iterations", 0),
+                        "success": bool(execution_result.get("success")),
+                    }
+                )
             pending_executions.append(
                 {
                     "iteration": state.get(

@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+import asyncio
+from collections.abc import Callable
 from typing import Any
 
 
@@ -86,3 +88,28 @@ class LLMInterface(ABC):
         Build the provider-specific tool-result message.
         """
         pass
+
+    async def generate_tool_response_stream(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        tool_choice: str | dict = "auto",
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        on_content_delta: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
+        """Fallback stream adapter for providers without native streaming."""
+
+        response = await asyncio.to_thread(
+            self.generate_tool_response,
+            messages=messages,
+            tools=tools,
+            tool_choice=tool_choice,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        content = str(response.get("content") or "")
+        if content and on_content_delta is not None:
+            on_content_delta(content)
+        return response
