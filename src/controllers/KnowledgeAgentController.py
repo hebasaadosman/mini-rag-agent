@@ -487,27 +487,27 @@ class KnowledgeAgentController(BaseController):
         used_chunk_ids: list[int],
     ) -> list[KnowledgeAgentSource]:
         """
-        Return only sources explicitly cited by the model.
+        Return sources grounded in successful retrieval tools.
 
-        Any chunk ID that was not present in a real tool result
-        is ignored, even if the model returned it.
+        Search results remain limited to chunk IDs explicitly cited by
+        the model. A successful read_asset call is itself an explicit
+        whole-document citation, so its asset is returned even though
+        the final-answer contract intentionally uses no chunk IDs for
+        full-document reads.
         """
-
-        if not used_chunk_ids:
-            return []
 
         source_by_chunk_id: dict[
             int,
             KnowledgeAgentSource,
         ] = {}
+        read_asset_sources: list[
+            KnowledgeAgentSource
+        ] = []
+        seen_read_assets: set[
+            tuple[int | None, str]
+        ] = set()
 
         for history_item in tool_history:
-            if (
-                history_item.get("tool_name")
-                != "search_project_chunks"
-            ):
-                continue
-
             execution_result = (
                 history_item.get(
                     "execution_result"
@@ -524,6 +524,43 @@ class KnowledgeAgentController(BaseController):
             )
 
             if not tool_result.get("success"):
+                continue
+
+            if history_item.get("tool_name") == "read_asset":
+                asset_name = str(
+                    tool_result.get("asset_name") or ""
+                ).strip()
+                asset_id = tool_result.get("asset_id")
+
+                if not asset_name:
+                    continue
+
+                normalized_asset_id = (
+                    asset_id
+                    if isinstance(asset_id, int)
+                    else None
+                )
+                source_key = (
+                    normalized_asset_id,
+                    asset_name,
+                )
+
+                if source_key in seen_read_assets:
+                    continue
+
+                seen_read_assets.add(source_key)
+                read_asset_sources.append(
+                    KnowledgeAgentSource(
+                        asset_id=normalized_asset_id,
+                        asset_name=asset_name,
+                    )
+                )
+                continue
+
+            if (
+                history_item.get("tool_name")
+                != "search_project_chunks"
+            ):
                 continue
 
             search_results = (
@@ -552,7 +589,7 @@ class KnowledgeAgentController(BaseController):
 
         selected_sources: list[
             KnowledgeAgentSource
-        ] = []
+        ] = list(read_asset_sources)
 
         seen_chunk_ids: set[int] = set()
 
