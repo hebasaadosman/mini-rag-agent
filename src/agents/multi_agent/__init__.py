@@ -13,6 +13,11 @@ from .decision_parser import (
 from .general_agent import GeneralAgent
 from .general_prompts import build_general_agent_system_prompt
 from .handoff import DEFAULT_MAX_HANDOFFS, build_handoff_update
+from .knowledge_adapter import (
+    KnowledgeAgentCore,
+    KnowledgeAgentFactory,
+    KnowledgeSpecialistAdapter,
+)
 from .prompts import build_supervisor_system_prompt
 from .schemas import (
     SupervisorDecision,
@@ -52,6 +57,9 @@ __all__ = [
     "ConversationRoute",
     "GeneralAgent",
     "HandoffReason",
+    "KnowledgeAgentCore",
+    "KnowledgeAgentFactory",
+    "KnowledgeSpecialistAdapter",
     "MultiAgentState",
     "SupervisorDecision",
     "SupervisorDecisionParseError",

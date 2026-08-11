@@ -49,6 +49,32 @@ class MultiAgentStateTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_initial_multi_agent_state("   ")
 
+    def test_accepts_optional_request_context(self):
+        state = build_initial_multi_agent_state(
+            "Question",
+            project_id=3,
+            thread_id="  thread-3  ",
+        )
+
+        self.assertEqual(state["project_id"], 3)
+        self.assertEqual(state["thread_id"], "thread-3")
+
+    def test_rejects_invalid_request_context(self):
+        invalid_contexts = [
+            {"project_id": 0},
+            {"project_id": True},
+            {"thread_id": "   "},
+            {"thread_id": "x" * 256},
+        ]
+
+        for context in invalid_contexts:
+            with self.subTest(context=context):
+                with self.assertRaises(ValueError):
+                    build_initial_multi_agent_state(
+                        "Question",
+                        **context,
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()
