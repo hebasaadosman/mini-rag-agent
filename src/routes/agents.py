@@ -13,6 +13,11 @@ from agents.knowledge_agent.schemas import (
     KnowledgeAgentMemoryResponse,
 )
 from agents.knowledge_agent.streaming import encode_sse, with_heartbeat
+from agents.multi_agent.api_schemas import (
+    MultiAgentChatRequest,
+    MultiAgentResponse,
+    MultiAgentResumeRequest,
+)
 from controllers import KnowledgeAgentController
 from models.ProjectModel import ProjectModel
 
@@ -21,6 +26,50 @@ agents_router = APIRouter(
     prefix="/api/v1/agents",
     tags=["agents"],
 )
+
+
+@agents_router.post(
+    "/{project_id}/chat",
+    response_model=MultiAgentResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Chat with the Multi-Agent supervisor",
+)
+async def chat_with_multi_agent(
+    request: Request,
+    project_id: int,
+    payload: MultiAgentChatRequest,
+):
+    lock_key = (
+        f"multi-agent:{project_id}:{payload.thread_id}"
+    )
+    async with request.app.agent_thread_locks.acquire(lock_key):
+        return await request.app.multi_agent_controller.chat(
+            project_id=project_id,
+            thread_id=payload.thread_id,
+            message=payload.message,
+        )
+
+
+@agents_router.post(
+    "/{project_id}/chat/resume",
+    response_model=MultiAgentResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Resume a paused Multi-Agent task",
+)
+async def resume_multi_agent_chat(
+    request: Request,
+    project_id: int,
+    payload: MultiAgentResumeRequest,
+):
+    lock_key = (
+        f"multi-agent:{project_id}:{payload.thread_id}"
+    )
+    async with request.app.agent_thread_locks.acquire(lock_key):
+        return await request.app.multi_agent_controller.resume(
+            project_id=project_id,
+            thread_id=payload.thread_id,
+            response=payload.response,
+        )
 
 
 @agents_router.post(

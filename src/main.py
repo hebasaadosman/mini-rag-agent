@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import create_async_engine,AsyncSession
 from sqlalchemy.orm import sessionmaker
 from utils.mertrics import setup_metrics_route
 from controllers.NLPController import NLPController
-from controllers import KnowledgeAgentController
+from controllers import KnowledgeAgentController, MultiAgentController
 from models.AssetModel import AssetModel
 from models.ProjectModel import ProjectModel
 from routes import agents
@@ -110,6 +110,10 @@ async def startup_db_client():
             checkpointer=app.checkpointer,
             max_memory_messages=app.agent_memory_max_messages,
         )
+    )
+    app.multi_agent_controller = MultiAgentController(
+        runtime=app.multi_agent_runtime,
+        project_model=app.project_model,
     )
 
 @app.on_event("shutdown")

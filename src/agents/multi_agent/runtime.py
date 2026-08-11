@@ -57,6 +57,7 @@ class MultiAgentRuntime:
         *,
         thread_id: str,
         response: str,
+        project_id: int | None = None,
     ) -> dict[str, Any]:
         if not self._has_checkpointer:
             raise RuntimeError(
@@ -72,6 +73,7 @@ class MultiAgentRuntime:
         snapshot = await self._workflow.aget_state(config)
         checkpoint = dict(snapshot.values or {})
         if checkpoint:
+            self._validate_project(checkpoint, project_id)
             graph_input: MultiAgentState = {
                 "conversation_event": "resume",
                 "gate_decision": None,
@@ -81,6 +83,7 @@ class MultiAgentRuntime:
         else:
             graph_input = build_initial_multi_agent_state(
                 normalized_response,
+                project_id=project_id,
                 thread_id=normalized_thread_id,
             )
             graph_input.update(

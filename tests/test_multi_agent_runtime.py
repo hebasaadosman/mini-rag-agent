@@ -110,6 +110,21 @@ class MultiAgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 project_id=2,
             )
 
+    async def test_resume_cannot_silently_change_projects(self):
+        runtime, _, _ = _runtime()
+        await runtime.chat(
+            thread_id="runtime-resume-project",
+            message="First",
+            project_id=1,
+        )
+
+        with self.assertRaisesRegex(ValueError, "different project"):
+            await runtime.resume(
+                thread_id="runtime-resume-project",
+                response="Continue",
+                project_id=2,
+            )
+
     async def test_resume_requires_persistent_checkpointing(self):
         runtime, _, _ = _runtime(checkpointer=False)
 
