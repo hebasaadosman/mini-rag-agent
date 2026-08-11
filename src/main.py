@@ -20,6 +20,7 @@ from persistence.checkpointing import (
     create_postgres_checkpointer,
 )
 from utils.async_keyed_lock import PostgresAdvisoryKeyedLock
+from infrastructure.email import create_send_email_tool
 settings = get_settings()
 
 configure_langsmith(settings)
@@ -75,6 +76,9 @@ async def startup_db_client():
     app.agent_memory_max_messages = (
         settings.AGENT_MEMORY_MAX_MESSAGES
     )
+    # The agent receives only this approved-delivery tool. SMTP credentials
+    # remain private inside the infrastructure adapter.
+    app.send_email_tool = create_send_email_tool(settings)
     app.agent_thread_locks = PostgresAdvisoryKeyedLock(
         app.pg_engine
     )

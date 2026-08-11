@@ -65,6 +65,17 @@ class Settings(BaseSettings):
     LANGSMITH_PROJECT: str
 
     AGENT_MEMORY_MAX_MESSAGES: int = 40
+
+    # Outbound email. Credentials are consumed only by the SMTP adapter and
+    # are never placed in agent state, prompts, or tool-call arguments.
+    SMTP_ENABLED: bool = False
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_FROM_ADDRESS: Optional[str] = None
+    SMTP_SECURITY: str = "starttls"
+    SMTP_TIMEOUT_SECONDS: float = 15.0
     
     class Config:
         env_file = ".env"
