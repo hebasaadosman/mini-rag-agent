@@ -7,6 +7,7 @@ from .OpenMeteoClient import (
     OpenMeteoClient,
     describe_wmo_weather_code,
 )
+from .SendEmailTool import EmailDeliveryGateway, SendEmailTool
 from .ToolRegistry import ToolRegistry
 
 
@@ -74,4 +75,6 @@ __all__ = [
     "LocationNotFoundError",
     "OpenMeteoClient",
     "describe_wmo_weather_code",
+    "EmailDeliveryGateway",
+    "SendEmailTool",
 ]

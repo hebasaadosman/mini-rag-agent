@@ -10,6 +10,21 @@ from .decision_parser import (
     SupervisorDecisionParseError,
     SupervisorDecisionParser,
 )
+from .email_agent import EmailAgent
+from .email_hitl import (
+    EmailApprovalStateError,
+    build_email_approval_update,
+    get_pending_email_approval,
+    parse_email_approval_decision,
+)
+from .email_parser import EmailResponseParseError, EmailResponseParser
+from .email_prompts import build_email_agent_system_prompt
+from .email_schemas import (
+    EmailApprovalDecision,
+    EmailDraft,
+    EmailModelAction,
+    EmailModelResponse,
+)
 from .general_agent import GeneralAgent
 from .general_prompts import build_general_agent_system_prompt
 from .handoff import DEFAULT_MAX_HANDOFFS, build_handoff_update
@@ -61,6 +76,14 @@ __all__ = [
     "ConversationGateEventError",
     "ConversationGateStateError",
     "ConversationRoute",
+    "EmailAgent",
+    "EmailApprovalDecision",
+    "EmailApprovalStateError",
+    "EmailDraft",
+    "EmailModelAction",
+    "EmailModelResponse",
+    "EmailResponseParseError",
+    "EmailResponseParser",
     "GeneralAgent",
     "HandoffReason",
     "KnowledgeAgentCore",
@@ -85,6 +108,8 @@ __all__ = [
     "UtilityAgent",
     "DEFAULT_MAX_HANDOFFS",
     "build_handoff_update",
+    "build_email_agent_system_prompt",
+    "build_email_approval_update",
     "build_specialist_clarification_update",
     "build_initial_multi_agent_state",
     "build_general_agent_system_prompt",
@@ -92,4 +117,6 @@ __all__ = [
     "build_utility_agent_system_prompt",
     "build_utility_tool_registry",
     "get_specialist_resume_message",
+    "get_pending_email_approval",
+    "parse_email_approval_decision",
 ]
