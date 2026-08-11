@@ -1,17 +1,65 @@
+from importlib import import_module
+from typing import Any
+
 from .BaseTool import BaseTool
-from .ListProjectAssetsTool import (
-    ListProjectAssetsTool,
-)
-from .SearchProjectChunksTool import (
-    SearchProjectChunksTool,
+from .OpenMeteoClient import (
+    LocationNotFoundError,
+    OpenMeteoClient,
+    describe_wmo_weather_code,
 )
 from .ToolRegistry import ToolRegistry
 
-from .SearchAssetsByNameTool import SearchAssetsByNameTool
-from .SearchProjectChunksTool import SearchProjectChunksTool
-from .GetAssetDetailsTool import GetAssetDetailsTool
-from .ReadAssetTool import ReadAssetTool
-from .RequestClarificationTool import RequestClarificationTool
+
+_LAZY_IMPORTS = {
+    "SearchProjectChunksTool": (
+        ".SearchProjectChunksTool",
+        "SearchProjectChunksTool",
+    ),
+    "ListProjectAssetsTool": (
+        ".ListProjectAssetsTool",
+        "ListProjectAssetsTool",
+    ),
+    "SearchAssetsByNameTool": (
+        ".SearchAssetsByNameTool",
+        "SearchAssetsByNameTool",
+    ),
+    "GetAssetDetailsTool": (
+        ".GetAssetDetailsTool",
+        "GetAssetDetailsTool",
+    ),
+    "ReadAssetTool": (
+        ".ReadAssetTool",
+        "ReadAssetTool",
+    ),
+    "RequestClarificationTool": (
+        ".RequestClarificationTool",
+        "RequestClarificationTool",
+    ),
+    "GetCurrentTimeTool": (
+        ".GetCurrentTimeTool",
+        "GetCurrentTimeTool",
+    ),
+    "GetCurrentWeatherTool": (
+        ".GetCurrentWeatherTool",
+        "GetCurrentWeatherTool",
+    ),
+}
+
+
+def __getattr__(name: str) -> Any:
+    target = _LAZY_IMPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    module_name, attribute_name = target
+    value = getattr(
+        import_module(module_name, __name__),
+        attribute_name,
+    )
+    globals()[name] = value
+    return value
+
+
 __all__ = [
     "BaseTool",
     "ToolRegistry",
@@ -21,4 +69,9 @@ __all__ = [
     "GetAssetDetailsTool",
     "ReadAssetTool",
     "RequestClarificationTool",
+    "GetCurrentTimeTool",
+    "GetCurrentWeatherTool",
+    "LocationNotFoundError",
+    "OpenMeteoClient",
+    "describe_wmo_weather_code",
 ]
