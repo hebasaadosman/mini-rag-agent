@@ -62,14 +62,14 @@ def build_handoff_update(
 
     return {
         "supervisor_decision": None,
-        "active_agent": from_agent,
+        "active_agent": from_agent.value,
         "resume_target": None,
-        "task_status": TaskStatus.RUNNING,
+        "task_status": TaskStatus.RUNNING.value,
         "pending_interrupt": None,
         "pending_user_message": None,
         "handoff_count": next_count,
         "handoff_reason": reason.value,
-        "visited_agents": visited_agents,
+        "visited_agents": [agent.value for agent in visited_agents],
         "final_response": None,
         "error": None,
     }
@@ -80,8 +80,8 @@ def _handoff_failure(
     message: str,
 ) -> dict[str, Any]:
     return {
-        "active_agent": from_agent,
-        "task_status": TaskStatus.FAILED,
+        "active_agent": from_agent.value,
+        "task_status": TaskStatus.FAILED.value,
         "final_response": None,
         "error": message,
     }

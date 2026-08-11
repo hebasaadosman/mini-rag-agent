@@ -137,9 +137,9 @@ class GeneralAgent:
 
         return {
             "messages": messages,
-            "active_agent": AgentName.GENERAL,
+            "active_agent": AgentName.GENERAL.value,
             "resume_target": None,
-            "task_status": TaskStatus.COMPLETED,
+            "task_status": TaskStatus.COMPLETED.value,
             "pending_interrupt": None,
             "pending_user_message": None,
             "handoff_reason": None,
@@ -195,9 +195,9 @@ class GeneralAgent:
     @staticmethod
     def _failure(message: str) -> dict[str, Any]:
         return {
-            "active_agent": AgentName.GENERAL,
+            "active_agent": AgentName.GENERAL.value,
             "resume_target": None,
-            "task_status": TaskStatus.FAILED,
+            "task_status": TaskStatus.FAILED.value,
             "pending_interrupt": None,
             "pending_user_message": None,
             "final_response": None,

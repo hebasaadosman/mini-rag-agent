@@ -24,6 +24,8 @@ class MultiAgentStateTests(unittest.TestCase):
             state["user_message"],
             "What is the weather in Riyadh?",
         )
+        self.assertEqual(state["conversation_event"], "new_message")
+        self.assertIsNone(state["gate_decision"])
         self.assertEqual(state["task_status"], TaskStatus.RUNNING)
         self.assertIsNone(state["active_agent"])
         self.assertIsNone(state["resume_target"])

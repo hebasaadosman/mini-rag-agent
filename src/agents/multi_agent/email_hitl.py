@@ -69,9 +69,9 @@ def build_email_approval_update(
     }
     return {
         "messages": messages,
-        "active_agent": AgentName.EMAIL,
-        "resume_target": AgentName.EMAIL,
-        "task_status": TaskStatus.WAITING_FOR_USER,
+        "active_agent": AgentName.EMAIL.value,
+        "resume_target": AgentName.EMAIL.value,
+        "task_status": TaskStatus.WAITING_FOR_USER.value,
         "pending_interrupt": approval,
         "pending_user_message": None,
         "handoff_reason": None,

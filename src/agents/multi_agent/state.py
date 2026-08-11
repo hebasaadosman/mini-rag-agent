@@ -22,22 +22,24 @@ class TaskStatus(str, Enum):
 class MultiAgentState(TypedDict, total=False):
     project_id: int
     thread_id: str
+    conversation_event: str
+    gate_decision: dict[str, Any] | None
 
     user_message: str
     messages: list[dict[str, Any]]
     tool_history: list[dict[str, Any]]
 
     supervisor_decision: dict[str, Any] | None
-    active_agent: AgentName | None
-    resume_target: AgentName | None
+    active_agent: str | None
+    resume_target: str | None
 
-    task_status: TaskStatus
+    task_status: str
     pending_interrupt: dict[str, Any] | None
     pending_user_message: str | None
 
     handoff_count: int
     handoff_reason: str | None
-    visited_agents: list[AgentName]
+    visited_agents: list[str]
 
     final_response: dict[str, Any] | None
     error: str | None
@@ -69,13 +71,15 @@ def build_initial_multi_agent_state(
             )
 
     state: MultiAgentState = {
+        "conversation_event": "new_message",
+        "gate_decision": None,
         "user_message": normalized_message,
         "messages": [],
         "tool_history": [],
         "supervisor_decision": None,
         "active_agent": None,
         "resume_target": None,
-        "task_status": TaskStatus.RUNNING,
+        "task_status": TaskStatus.RUNNING.value,
         "pending_interrupt": None,
         "pending_user_message": None,
         "handoff_count": 0,

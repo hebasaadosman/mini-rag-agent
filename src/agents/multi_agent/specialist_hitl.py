@@ -53,9 +53,9 @@ def build_specialist_clarification_update(
     )
     return {
         "messages": messages,
-        "active_agent": from_agent,
-        "resume_target": from_agent,
-        "task_status": TaskStatus.WAITING_FOR_USER,
+        "active_agent": from_agent.value,
+        "resume_target": from_agent.value,
+        "task_status": TaskStatus.WAITING_FOR_USER.value,
         "pending_interrupt": {
             **clarification,
             "interrupt_id": interrupt_id,

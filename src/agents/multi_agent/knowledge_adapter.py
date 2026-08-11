@@ -192,9 +192,9 @@ class KnowledgeSpecialistAdapter:
                 user_content=input_message,
                 assistant_content=answer,
             ),
-            "active_agent": AgentName.KNOWLEDGE,
+            "active_agent": AgentName.KNOWLEDGE.value,
             "resume_target": None,
-            "task_status": TaskStatus.COMPLETED,
+            "task_status": TaskStatus.COMPLETED.value,
             "pending_interrupt": None,
             "pending_user_message": None,
             "handoff_reason": None,
@@ -259,9 +259,9 @@ class KnowledgeSpecialistAdapter:
                 user_content=input_message,
                 assistant_content=question,
             ),
-            "active_agent": AgentName.KNOWLEDGE,
-            "resume_target": AgentName.KNOWLEDGE,
-            "task_status": TaskStatus.WAITING_FOR_USER,
+            "active_agent": AgentName.KNOWLEDGE.value,
+            "resume_target": AgentName.KNOWLEDGE.value,
+            "task_status": TaskStatus.WAITING_FOR_USER.value,
             "pending_interrupt": pending_interrupt,
             "pending_user_message": None,
             "final_response": final_response,
@@ -384,8 +384,8 @@ class KnowledgeSpecialistAdapter:
     @staticmethod
     def _failure(message: str) -> dict[str, Any]:
         return {
-            "active_agent": AgentName.KNOWLEDGE,
-            "task_status": TaskStatus.FAILED,
+            "active_agent": AgentName.KNOWLEDGE.value,
+            "task_status": TaskStatus.FAILED.value,
             "final_response": None,
             "error": message,
         }

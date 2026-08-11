@@ -27,6 +27,7 @@ from .email_schemas import (
 )
 from .general_agent import GeneralAgent
 from .general_prompts import build_general_agent_system_prompt
+from .graph import MultiAgentGraph
 from .handoff import DEFAULT_MAX_HANDOFFS, build_handoff_update
 from .knowledge_adapter import (
     KnowledgeAgentCore,
@@ -34,6 +35,7 @@ from .knowledge_adapter import (
     KnowledgeSpecialistAdapter,
 )
 from .prompts import build_supervisor_system_prompt
+from .runtime import MultiAgentRuntime
 from .schemas import (
     SupervisorDecision,
     SupervisorReason,
@@ -90,6 +92,8 @@ __all__ = [
     "KnowledgeAgentFactory",
     "KnowledgeSpecialistAdapter",
     "MultiAgentState",
+    "MultiAgentGraph",
+    "MultiAgentRuntime",
     "SupervisorDecision",
     "SupervisorDecisionParseError",
     "SupervisorDecisionParser",

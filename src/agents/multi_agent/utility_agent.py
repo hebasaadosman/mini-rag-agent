@@ -327,9 +327,9 @@ class UtilityAgent:
         return {
             "messages": messages,
             "tool_history": tool_history,
-            "active_agent": AgentName.UTILITY,
+            "active_agent": AgentName.UTILITY.value,
             "resume_target": None,
-            "task_status": TaskStatus.COMPLETED,
+            "task_status": TaskStatus.COMPLETED.value,
             "pending_interrupt": None,
             "pending_user_message": None,
             "handoff_reason": None,
@@ -393,9 +393,9 @@ class UtilityAgent:
     @staticmethod
     def _failure(message: str) -> dict[str, Any]:
         return {
-            "active_agent": AgentName.UTILITY,
+            "active_agent": AgentName.UTILITY.value,
             "resume_target": None,
-            "task_status": TaskStatus.FAILED,
+            "task_status": TaskStatus.FAILED.value,
             "pending_interrupt": None,
             "pending_user_message": None,
             "final_response": None,

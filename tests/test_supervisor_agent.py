@@ -187,6 +187,49 @@ class SupervisorAgentTests(unittest.IsolatedAsyncioTestCase):
             "The supervisor returned an invalid routing decision.",
         )
 
+    async def test_resume_uses_the_original_request_and_user_clarification(self):
+        provider = _FakeProvider(
+            json.dumps(
+                {
+                    "route": "email",
+                    "reason": "action_required",
+                    "confidence": 0.95,
+                }
+            )
+        )
+        agent = SupervisorAgent(llm_provider=provider)
+        state = build_initial_multi_agent_state("Contact the customer")
+        state["task_status"] = TaskStatus.WAITING_FOR_USER
+        state["resume_target"] = AgentName.SUPERVISOR
+        state["pending_interrupt"] = {
+            "type": "routing_clarification",
+            "question": "Do you want to send an email?",
+            "interrupt_id": "supervisor-interrupt-1",
+        }
+        state["pending_user_message"] = "Yes, send an email."
+
+        update = await agent.resume(state)
+
+        self.assertEqual(update["supervisor_decision"]["route"], "email")
+        self.assertIn("Original request:", provider.calls[0]["prompt"])
+        self.assertIn(
+            "Yes, send an email.",
+            provider.calls[0]["prompt"],
+        )
+        self.assertIsNone(update["resume_target"])
+        self.assertIsNone(update["pending_interrupt"])
+
+    async def test_resume_rejects_missing_supervisor_clarification(self):
+        provider = _FakeProvider("unused")
+        agent = SupervisorAgent(llm_provider=provider)
+
+        update = await agent.resume(
+            build_initial_multi_agent_state("Hello")
+        )
+
+        self.assertEqual(update["task_status"], TaskStatus.FAILED)
+        self.assertEqual(provider.calls, [])
+
 
 if __name__ == "__main__":
     unittest.main()

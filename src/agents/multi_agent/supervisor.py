@@ -8,6 +8,10 @@ from .decision_parser import (
 from .prompts import build_supervisor_system_prompt
 from .specialist_schemas import HandoffReason
 from .state import AgentName, MultiAgentState, TaskStatus
+from .supervisor_hitl import (
+    SupervisorResumeError,
+    get_supervisor_resume_message,
+)
 
 
 class SupervisorAgent:
@@ -56,9 +60,39 @@ class SupervisorAgent:
 
         return {
             "supervisor_decision": decision.model_dump(mode="json"),
-            "active_agent": AgentName.SUPERVISOR,
-            "task_status": TaskStatus.RUNNING,
+            "active_agent": AgentName.SUPERVISOR.value,
+            "task_status": TaskStatus.RUNNING.value,
             "error": None,
+        }
+
+    async def resume(
+        self,
+        state: MultiAgentState,
+    ) -> dict[str, Any]:
+        try:
+            response = get_supervisor_resume_message(state)
+        except SupervisorResumeError as exc:
+            return self._failure(str(exc))
+
+        original_request = str(state.get("user_message") or "").strip()
+        if not original_request:
+            return self._failure("The original routing request is missing.")
+
+        resumed_state = {
+            **state,
+            "user_message": (
+                f"Original request:\n{original_request}\n\n"
+                f"Clarification response:\n{response}"
+            ),
+        }
+        update = await self(resumed_state)
+        if update.get("error"):
+            return update
+        return {
+            **update,
+            "resume_target": None,
+            "pending_interrupt": None,
+            "pending_user_message": None,
         }
 
     @staticmethod
@@ -96,7 +130,7 @@ class SupervisorAgent:
     def _failure(message: str) -> dict[str, Any]:
         return {
             "supervisor_decision": None,
-            "active_agent": AgentName.SUPERVISOR,
-            "task_status": TaskStatus.FAILED,
+            "active_agent": AgentName.SUPERVISOR.value,
+            "task_status": TaskStatus.FAILED.value,
             "error": message,
         }
