@@ -63,7 +63,10 @@ def build_handoff_update(
     return {
         "supervisor_decision": None,
         "active_agent": from_agent,
+        "resume_target": None,
         "task_status": TaskStatus.RUNNING,
+        "pending_interrupt": None,
+        "pending_user_message": None,
         "handoff_count": next_count,
         "handoff_reason": reason.value,
         "visited_agents": visited_agents,

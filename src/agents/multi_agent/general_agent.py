@@ -7,6 +7,12 @@ from .specialist_parser import (
     SpecialistResponseParseError,
     SpecialistResponseParser,
 )
+from .specialist_hitl import (
+    ClarificationIdFactory,
+    SpecialistResumeError,
+    build_specialist_clarification_update,
+    get_specialist_resume_message,
+)
 from .specialist_schemas import SpecialistAction
 from .state import AgentName, MultiAgentState, TaskStatus
 
@@ -19,6 +25,7 @@ class GeneralAgent:
         max_tokens: int = 500,
         temperature: float = 0.2,
         max_memory_messages: int = 40,
+        interrupt_id_factory: ClarificationIdFactory | None = None,
     ) -> None:
         if max_memory_messages < 2:
             raise ValueError("max_memory_messages must be at least 2.")
@@ -27,6 +34,7 @@ class GeneralAgent:
         self._max_tokens = max_tokens
         self._temperature = temperature
         self._max_memory_messages = max_memory_messages
+        self._interrupt_id_factory = interrupt_id_factory
 
     async def __call__(
         self,
@@ -35,6 +43,29 @@ class GeneralAgent:
         user_message = str(state.get("user_message") or "").strip()
         if not user_message:
             return self._failure("user_message cannot be blank.")
+
+        return await self._run(state, user_message=user_message)
+
+    async def resume(
+        self,
+        state: MultiAgentState,
+    ) -> dict[str, Any]:
+        try:
+            response = get_specialist_resume_message(
+                state,
+                target_agent=AgentName.GENERAL,
+            )
+        except SpecialistResumeError as exc:
+            return self._failure(str(exc))
+
+        return await self._run(state, user_message=response)
+
+    async def _run(
+        self,
+        state: MultiAgentState,
+        *,
+        user_message: str,
+    ) -> dict[str, Any]:
 
         canonical_history = self._normalize_history(
             state.get("messages") or []
@@ -68,10 +99,30 @@ class GeneralAgent:
                 reason=response.handoff_reason,
             )
 
+        if response.action == SpecialistAction.CLARIFICATION:
+            try:
+                return build_specialist_clarification_update(
+                    state,
+                    from_agent=AgentName.GENERAL,
+                    input_message=user_message,
+                    question=response.question,
+                    options=response.options,
+                    max_memory_messages=self._max_memory_messages,
+                    interrupt_id_factory=self._interrupt_id_factory,
+                )
+            except ValueError:
+                return self._failure(
+                    "The general agent returned invalid clarification."
+                )
+
         normalized_answer = response.answer
 
         retained_limit = self._max_memory_messages - 2
-        retained_history = canonical_history[-retained_limit:]
+        retained_history = (
+            canonical_history[-retained_limit:]
+            if retained_limit
+            else []
+        )
         while (
             retained_history
             and retained_history[0]["role"] != "user"
@@ -87,7 +138,10 @@ class GeneralAgent:
         return {
             "messages": messages,
             "active_agent": AgentName.GENERAL,
+            "resume_target": None,
             "task_status": TaskStatus.COMPLETED,
+            "pending_interrupt": None,
+            "pending_user_message": None,
             "handoff_reason": None,
             "final_response": {
                 "success": True,
@@ -142,7 +196,10 @@ class GeneralAgent:
     def _failure(message: str) -> dict[str, Any]:
         return {
             "active_agent": AgentName.GENERAL,
+            "resume_target": None,
             "task_status": TaskStatus.FAILED,
+            "pending_interrupt": None,
+            "pending_user_message": None,
             "final_response": None,
             "error": message,
         }

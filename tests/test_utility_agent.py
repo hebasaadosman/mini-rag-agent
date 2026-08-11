@@ -5,6 +5,9 @@ from typing import Any
 
 from agents.multi_agent import (
     AgentName,
+    ConversationEvent,
+    ConversationGate,
+    ConversationRoute,
     TaskStatus,
     UtilityAgent,
     build_initial_multi_agent_state,
@@ -94,6 +97,82 @@ def _registry_with(*tools):
 
 
 class UtilityAgentTests(unittest.IsolatedAsyncioTestCase):
+    async def test_missing_location_pauses_and_resumes_utility(self):
+        provider = _FakeProvider(
+            [
+                {
+                    "content": json.dumps(
+                        {
+                            "action": "clarification",
+                            "question": "Which city?",
+                            "options": [],
+                        }
+                    ),
+                    "tool_calls": [],
+                },
+                {
+                    "content": json.dumps(
+                        {
+                            "action": "answer",
+                            "answer": "It is clear in Riyadh.",
+                        }
+                    ),
+                    "tool_calls": [],
+                },
+            ]
+        )
+        agent = UtilityAgent(
+            llm_provider=provider,
+            tool_registry=ToolRegistry(),
+            interrupt_id_factory=lambda: "utility-id-1",
+        )
+        state = build_initial_multi_agent_state("What is the weather?")
+
+        state.update(await agent(state))
+
+        self.assertEqual(state["task_status"], TaskStatus.WAITING_FOR_USER)
+        self.assertEqual(state["resume_target"], AgentName.UTILITY)
+        self.assertEqual(
+            state["pending_interrupt"]["interrupt_id"],
+            "utility-id-1",
+        )
+        decision = ConversationGate.decide(
+            state,
+            ConversationEvent.RESUME,
+        )
+        self.assertEqual(decision.route, ConversationRoute.RESUME_TARGET)
+        self.assertEqual(decision.target, AgentName.UTILITY)
+
+        state["pending_user_message"] = "Riyadh"
+        state.update(await agent.resume(state))
+
+        self.assertEqual(state["task_status"], TaskStatus.COMPLETED)
+        self.assertIsNone(state["resume_target"])
+        self.assertIsNone(state["pending_interrupt"])
+        self.assertEqual(
+            state["final_response"]["answer"],
+            "It is clear in Riyadh.",
+        )
+        second_messages = provider.calls[1]["messages"]
+        self.assertEqual(
+            [message["role"] for message in second_messages],
+            ["SYSTEM", "USER", "CHATBOT", "USER"],
+        )
+
+    async def test_resume_without_utility_interrupt_is_rejected(self):
+        provider = _FakeProvider([])
+        agent = UtilityAgent(
+            llm_provider=provider,
+            tool_registry=ToolRegistry(),
+        )
+
+        update = await agent.resume(
+            build_initial_multi_agent_state("Weather?")
+        )
+
+        self.assertEqual(update["task_status"], TaskStatus.FAILED)
+        self.assertEqual(provider.calls, [])
+
     async def test_executes_time_and_weather_tools_in_one_turn(self):
         time_tool = _FakeTool(
             "get_current_time",

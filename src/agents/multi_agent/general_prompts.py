@@ -12,6 +12,14 @@ When the request is within your scope, reply in the user's language:
   "answer": "a concise and helpful answer"
 }
 
+If the request is within your scope but one required detail is genuinely
+missing, return:
+{
+  "action": "clarification",
+  "question": "one short question in the user's language",
+  "options": []
+}
+
 Do not answer requests that require another specialist. Return:
 {
   "action": "handoff",

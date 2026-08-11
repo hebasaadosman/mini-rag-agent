@@ -15,6 +15,12 @@ from .specialist_parser import (
     SpecialistResponseParseError,
     SpecialistResponseParser,
 )
+from .specialist_hitl import (
+    ClarificationIdFactory,
+    SpecialistResumeError,
+    build_specialist_clarification_update,
+    get_specialist_resume_message,
+)
 from .specialist_schemas import SpecialistAction
 from .state import AgentName, MultiAgentState, TaskStatus
 from .utility_prompts import build_utility_agent_system_prompt
@@ -42,6 +48,7 @@ class UtilityAgent:
         max_tokens: int = 1200,
         temperature: float = 0,
         max_memory_messages: int = 40,
+        interrupt_id_factory: ClarificationIdFactory | None = None,
     ) -> None:
         if max_iterations < 1:
             raise ValueError("max_iterations must be at least 1.")
@@ -63,6 +70,7 @@ class UtilityAgent:
         self._max_tokens = max_tokens
         self._temperature = temperature
         self._max_memory_messages = max_memory_messages
+        self._interrupt_id_factory = interrupt_id_factory
 
     async def __call__(
         self,
@@ -71,6 +79,29 @@ class UtilityAgent:
         user_message = str(state.get("user_message") or "").strip()
         if not user_message:
             return self._failure("user_message cannot be blank.")
+
+        return await self._run(state, user_message=user_message)
+
+    async def resume(
+        self,
+        state: MultiAgentState,
+    ) -> dict[str, Any]:
+        try:
+            response = get_specialist_resume_message(
+                state,
+                target_agent=AgentName.UTILITY,
+            )
+        except SpecialistResumeError as exc:
+            return self._failure(str(exc))
+
+        return await self._run(state, user_message=response)
+
+    async def _run(
+        self,
+        state: MultiAgentState,
+        *,
+        user_message: str,
+    ) -> dict[str, Any]:
 
         canonical_history = self._normalize_history(
             state.get("messages") or []
@@ -167,6 +198,25 @@ class UtilityAgent:
                 update["tool_history"] = tool_history
                 return update
 
+            if response.action == SpecialistAction.CLARIFICATION:
+                try:
+                    update = build_specialist_clarification_update(
+                        state,
+                        from_agent=AgentName.UTILITY,
+                        input_message=user_message,
+                        question=response.question,
+                        options=response.options,
+                        max_memory_messages=self._max_memory_messages,
+                        interrupt_id_factory=self._interrupt_id_factory,
+                    )
+                except ValueError:
+                    return self._failure(
+                        "The utility agent returned invalid clarification."
+                    )
+                update["tool_history"] = tool_history
+                update["final_response"]["iterations"] = iteration
+                return update
+
             return self._success(
                 canonical_history=canonical_history,
                 tool_history=tool_history,
@@ -258,7 +308,11 @@ class UtilityAgent:
         iterations: int,
     ) -> dict[str, Any]:
         retained_limit = self._max_memory_messages - 2
-        retained_history = canonical_history[-retained_limit:]
+        retained_history = (
+            canonical_history[-retained_limit:]
+            if retained_limit
+            else []
+        )
         while (
             retained_history
             and retained_history[0]["role"] != "user"
@@ -274,7 +328,10 @@ class UtilityAgent:
             "messages": messages,
             "tool_history": tool_history,
             "active_agent": AgentName.UTILITY,
+            "resume_target": None,
             "task_status": TaskStatus.COMPLETED,
+            "pending_interrupt": None,
+            "pending_user_message": None,
             "handoff_reason": None,
             "final_response": {
                 "success": True,
@@ -337,7 +394,10 @@ class UtilityAgent:
     def _failure(message: str) -> dict[str, Any]:
         return {
             "active_agent": AgentName.UTILITY,
+            "resume_target": None,
             "task_status": TaskStatus.FAILED,
+            "pending_interrupt": None,
+            "pending_user_message": None,
             "final_response": None,
             "error": message,
         }

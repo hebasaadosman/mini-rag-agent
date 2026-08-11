@@ -277,7 +277,11 @@ class KnowledgeSpecialistAdapter:
     ) -> list[dict[str, str]]:
         history = self._normalize_history(state.get("messages") or [])
         retained_limit = self._max_memory_messages - 2
-        retained_history = history[-retained_limit:]
+        retained_history = (
+            history[-retained_limit:]
+            if retained_limit
+            else []
+        )
         while retained_history and retained_history[0]["role"] != "user":
             retained_history.pop(0)
         return [

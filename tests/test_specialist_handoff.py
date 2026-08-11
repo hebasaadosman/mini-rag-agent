@@ -16,7 +16,7 @@ from agents.multi_agent import (
 
 
 class SpecialistResponseTests(unittest.TestCase):
-    def test_accepts_answer_and_handoff_contracts(self):
+    def test_accepts_answer_handoff_and_clarification_contracts(self):
         answer = SpecialistResponse(
             action=SpecialistAction.ANSWER,
             answer="  Hello  ",
@@ -25,12 +25,19 @@ class SpecialistResponseTests(unittest.TestCase):
             action=SpecialistAction.HANDOFF,
             handoff_reason=HandoffReason.EXTERNAL_INFORMATION,
         )
+        clarification = SpecialistResponse(
+            action=SpecialistAction.CLARIFICATION,
+            question="  Which city?  ",
+            options=[" Riyadh ", "Jeddah", "Riyadh"],
+        )
 
         self.assertEqual(answer.answer, "Hello")
         self.assertEqual(
             handoff.handoff_reason,
             HandoffReason.EXTERNAL_INFORMATION,
         )
+        self.assertEqual(clarification.question, "Which city?")
+        self.assertEqual(clarification.options, ["Riyadh", "Jeddah"])
 
     def test_rejects_mixed_or_incomplete_contracts(self):
         invalid_payloads = [
@@ -44,6 +51,17 @@ class SpecialistResponseTests(unittest.TestCase):
             {
                 "action": "handoff",
                 "answer": "Not allowed",
+                "handoff_reason": "external_information",
+            },
+            {"action": "clarification"},
+            {
+                "action": "clarification",
+                "question": "Which city?",
+                "answer": "Riyadh",
+            },
+            {
+                "action": "clarification",
+                "question": "Which city?",
                 "handoff_reason": "external_information",
             },
         ]

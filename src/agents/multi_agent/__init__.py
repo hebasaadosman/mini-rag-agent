@@ -34,6 +34,12 @@ from .specialist_parser import (
     SpecialistResponseParseError,
     SpecialistResponseParser,
 )
+from .specialist_hitl import (
+    ClarificationIdFactory,
+    SpecialistResumeError,
+    build_specialist_clarification_update,
+    get_specialist_resume_message,
+)
 from .specialist_schemas import (
     HandoffReason,
     SpecialistAction,
@@ -70,6 +76,8 @@ __all__ = [
     "SupervisorRoute",
     "SupervisorRouter",
     "SpecialistAction",
+    "ClarificationIdFactory",
+    "SpecialistResumeError",
     "SpecialistResponse",
     "SpecialistResponseParseError",
     "SpecialistResponseParser",
@@ -77,9 +85,11 @@ __all__ = [
     "UtilityAgent",
     "DEFAULT_MAX_HANDOFFS",
     "build_handoff_update",
+    "build_specialist_clarification_update",
     "build_initial_multi_agent_state",
     "build_general_agent_system_prompt",
     "build_supervisor_system_prompt",
     "build_utility_agent_system_prompt",
     "build_utility_tool_registry",
+    "get_specialist_resume_message",
 ]

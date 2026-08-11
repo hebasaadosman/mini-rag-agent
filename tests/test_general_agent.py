@@ -53,6 +53,37 @@ class _FakeProvider:
 
 
 class GeneralAgentTests(unittest.IsolatedAsyncioTestCase):
+    async def test_general_clarification_can_resume_directly(self):
+        provider = _FakeProvider(
+            json.dumps(
+                {
+                    "action": "clarification",
+                    "question": "Which concept should I explain?",
+                    "options": [],
+                }
+            )
+        )
+        agent = GeneralAgent(
+            llm_provider=provider,
+            interrupt_id_factory=lambda: "general-id-1",
+        )
+        state = build_initial_multi_agent_state("Explain it")
+
+        state.update(await agent(state))
+
+        self.assertEqual(state["resume_target"], AgentName.GENERAL)
+        self.assertEqual(state["task_status"], TaskStatus.WAITING_FOR_USER)
+
+        provider.answer = json.dumps(
+            {"action": "answer", "answer": "RAG means retrieval..."}
+        )
+        state["pending_user_message"] = "RAG"
+        state.update(await agent.resume(state))
+
+        self.assertEqual(state["task_status"], TaskStatus.COMPLETED)
+        self.assertIsNone(state["resume_target"])
+        self.assertEqual(len(provider.calls), 2)
+
     async def test_completes_a_general_conversation_turn(self):
         provider = _FakeProvider(
             json.dumps(
