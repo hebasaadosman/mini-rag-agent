@@ -1,8 +1,9 @@
 import logging
+from collections.abc import Callable
 from typing import Any, List, Union
 import json 
 
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 
 from ..LLMEnum import OpenAIRoleEnum
 from ..LLMInterface import LLMInterface
@@ -33,6 +34,10 @@ class OpenAIProvider(LLMInterface):
         )
 
         self.client = OpenAI(
+            api_key=self.api_key,
+            base_url=self.api_url or None,
+        )
+        self.async_client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=self.api_url or None,
         )
@@ -226,6 +231,94 @@ class OpenAIProvider(LLMInterface):
             "content": message.content or "",
             "tool_calls": normalized_tool_calls,
             "finish_reason": choice.finish_reason,
+        }
+
+    async def generate_tool_response_stream(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        tool_choice: str | dict = "auto",
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        on_content_delta: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
+        """Stream one tool-capable completion and return its accumulated form."""
+
+        if not self.async_client:
+            raise RuntimeError("OpenAI async client is not initialized.")
+        if not self.generation_model_id:
+            raise RuntimeError("Generation model ID is not configured.")
+
+        resolved_temperature = (
+            self.default_generation_temperature
+            if temperature is None
+            else temperature
+        )
+        resolved_max_tokens = (
+            self.default_generation_max_output_tokens
+            if max_tokens is None
+            else max_tokens
+        )
+
+        stream = await self.async_client.chat.completions.create(
+            model=self.generation_model_id,
+            messages=messages,
+            tools=tools,
+            tool_choice=tool_choice,
+            max_tokens=resolved_max_tokens,
+            temperature=resolved_temperature,
+            stream=True,
+        )
+
+        content_parts: list[str] = []
+        tool_calls_by_index: dict[int, dict[str, Any]] = {}
+        finish_reason: str | None = None
+
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
+
+            choice = chunk.choices[0]
+            delta = choice.delta
+            if choice.finish_reason is not None:
+                finish_reason = choice.finish_reason
+
+            if delta.content:
+                content_parts.append(delta.content)
+                if on_content_delta is not None:
+                    on_content_delta(delta.content)
+
+            for tool_call_delta in delta.tool_calls or []:
+                index = tool_call_delta.index
+                accumulated = tool_calls_by_index.setdefault(
+                    index,
+                    {
+                        "id": "",
+                        "type": "function",
+                        "name": "",
+                        "arguments": "",
+                    },
+                )
+                if tool_call_delta.id:
+                    accumulated["id"] = tool_call_delta.id
+                if tool_call_delta.type:
+                    accumulated["type"] = tool_call_delta.type
+
+                function = tool_call_delta.function
+                if function is not None:
+                    if function.name:
+                        accumulated["name"] += function.name
+                    if function.arguments:
+                        accumulated["arguments"] += function.arguments
+
+        return {
+            "content": "".join(content_parts),
+            "tool_calls": [
+                tool_calls_by_index[index]
+                for index in sorted(tool_calls_by_index)
+            ],
+            "finish_reason": finish_reason,
         }
 
     def construct_prompt(

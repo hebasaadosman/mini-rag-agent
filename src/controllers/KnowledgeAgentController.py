@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from typing import Any
 
 from agents.knowledge_agent.prompts import (
@@ -111,40 +112,9 @@ class KnowledgeAgentController(BaseController):
                 error=str(exc),
             )
 
-        sources = self._extract_sources(
-            tool_history=(
-                result.get("tool_history")
-                or []
-            ),
-            used_chunk_ids=(
-                result.get("used_chunk_ids")
-                or []
-            ),
-        )
-
-        return KnowledgeAgentResponse(
-            success=bool(
-                result.get("success")
-            ),
-            status=result.get("status", "failed"),
+        return self._response_from_result(
             project_id=project_id,
-            answer=result.get("answer"),
-            iterations=int(
-                result.get("iterations") or 0
-            ),
-            sources=sources,
-            clarification=(
-                KnowledgeAgentClarification.model_validate(
-                    result["clarification"]
-                )
-                if result.get("clarification")
-                else None
-            ),
-            interrupt_id=result.get("interrupt_id"),
-            memory_message_count=int(
-                result.get("memory_message_count") or 0
-            ),
-            error=result.get("error"),
+            result=result,
         )
 
     async def resume(
@@ -188,31 +158,117 @@ class KnowledgeAgentController(BaseController):
                 error=str(exc),
             )
 
-        sources = self._extract_sources(
-            tool_history=result.get("tool_history") or [],
-            used_chunk_ids=result.get("used_chunk_ids") or [],
+        return self._response_from_result(
+            project_id=project_id,
+            result=result,
         )
 
-        return KnowledgeAgentResponse(
-            success=bool(result.get("success")),
-            status=result.get("status", "failed"),
+    async def chat_stream(
+        self,
+        *,
+        project_id: int,
+        thread_id: str,
+        message: str,
+    ) -> AsyncIterator[dict[str, Any]]:
+        normalized_message = message.strip()
+        normalized_thread_id = thread_id.strip()
+
+        validation_error = await self._validate_stream_request(
             project_id=project_id,
-            answer=result.get("answer"),
-            iterations=int(result.get("iterations") or 0),
-            sources=sources,
-            clarification=(
-                KnowledgeAgentClarification.model_validate(
-                    result["clarification"]
-                )
-                if result.get("clarification")
-                else None
-            ),
-            interrupt_id=result.get("interrupt_id"),
-            memory_message_count=int(
-                result.get("memory_message_count") or 0
-            ),
-            error=result.get("error"),
+            thread_id=normalized_thread_id,
+            value=normalized_message,
+            value_name="message",
         )
+        if validation_error is not None:
+            yield self._terminal_stream_event(validation_error)
+            return
+
+        agent = self._build_agent(project_id=project_id)
+        yield {
+            "event": "started",
+            "data": {
+                "project_id": project_id,
+                "thread_id": normalized_thread_id,
+            },
+        }
+        try:
+            async for event in agent.stream(
+                project_id=project_id,
+                thread_id=normalized_thread_id,
+                user_message=normalized_message,
+                system_prompt=KNOWLEDGE_AGENT_SYSTEM_PROMPT,
+            ):
+                if event.get("event") != "result":
+                    yield event
+                    continue
+
+                response = self._response_from_result(
+                    project_id=project_id,
+                    result=event.get("data") or {},
+                )
+                yield self._terminal_stream_event(response)
+        except ValueError as exc:
+            yield self._terminal_stream_event(
+                KnowledgeAgentResponse(
+                    success=False,
+                    status="failed",
+                    project_id=project_id,
+                    error=str(exc),
+                )
+            )
+
+    async def resume_stream(
+        self,
+        *,
+        project_id: int,
+        thread_id: str,
+        response: str,
+    ) -> AsyncIterator[dict[str, Any]]:
+        normalized_thread_id = thread_id.strip()
+        normalized_response = response.strip()
+
+        validation_error = await self._validate_stream_request(
+            project_id=project_id,
+            thread_id=normalized_thread_id,
+            value=normalized_response,
+            value_name="response",
+        )
+        if validation_error is not None:
+            yield self._terminal_stream_event(validation_error)
+            return
+
+        agent = self._build_agent(project_id=project_id)
+        yield {
+            "event": "started",
+            "data": {
+                "project_id": project_id,
+                "thread_id": normalized_thread_id,
+                "resumed": True,
+            },
+        }
+        try:
+            async for event in agent.stream_resume(
+                thread_id=normalized_thread_id,
+                response=normalized_response,
+            ):
+                if event.get("event") != "result":
+                    yield event
+                    continue
+
+                result_response = self._response_from_result(
+                    project_id=project_id,
+                    result=event.get("data") or {},
+                )
+                yield self._terminal_stream_event(result_response)
+        except ValueError as exc:
+            yield self._terminal_stream_event(
+                KnowledgeAgentResponse(
+                    success=False,
+                    status="failed",
+                    project_id=project_id,
+                    error=str(exc),
+                )
+            )
 
     async def get_memory(
         self,
@@ -288,6 +344,83 @@ class KnowledgeAgentController(BaseController):
             cleared=before["exists"],
         )
 
+    async def _validate_stream_request(
+        self,
+        *,
+        project_id: int,
+        thread_id: str,
+        value: str,
+        value_name: str,
+    ) -> KnowledgeAgentResponse | None:
+        if not value:
+            return KnowledgeAgentResponse(
+                success=False,
+                status="failed",
+                project_id=project_id,
+                error=f"The {value_name} cannot be empty.",
+            )
+        if not thread_id:
+            return KnowledgeAgentResponse(
+                success=False,
+                status="failed",
+                project_id=project_id,
+                error="The thread_id cannot be empty.",
+            )
+        project = await self.project_model.get_project_by_id(project_id)
+        if project is None:
+            return KnowledgeAgentResponse(
+                success=False,
+                status="failed",
+                project_id=project_id,
+                error=f"Project with ID {project_id} was not found.",
+            )
+        return None
+
+    def _response_from_result(
+        self,
+        *,
+        project_id: int,
+        result: dict[str, Any],
+    ) -> KnowledgeAgentResponse:
+        sources = self._extract_sources(
+            tool_history=result.get("tool_history") or [],
+            used_chunk_ids=result.get("used_chunk_ids") or [],
+        )
+        return KnowledgeAgentResponse(
+            success=bool(result.get("success")),
+            status=result.get("status", "failed"),
+            project_id=project_id,
+            answer=result.get("answer"),
+            iterations=int(result.get("iterations") or 0),
+            sources=sources,
+            clarification=(
+                KnowledgeAgentClarification.model_validate(
+                    result["clarification"]
+                )
+                if result.get("clarification")
+                else None
+            ),
+            interrupt_id=result.get("interrupt_id"),
+            memory_message_count=int(
+                result.get("memory_message_count") or 0
+            ),
+            error=result.get("error"),
+        )
+
+    @staticmethod
+    def _terminal_stream_event(
+        response: KnowledgeAgentResponse,
+    ) -> dict[str, Any]:
+        event_name = {
+            "completed": "completed",
+            "clarification_required": "clarification_required",
+            "failed": "error",
+        }[response.status]
+        return {
+            "event": event_name,
+            "data": response.model_dump(mode="json"),
+        }
+
     def _build_agent(self, *, project_id: int) -> KnowledgeAgent:
         return KnowledgeAgent(
             project_id=project_id,
@@ -354,27 +487,27 @@ class KnowledgeAgentController(BaseController):
         used_chunk_ids: list[int],
     ) -> list[KnowledgeAgentSource]:
         """
-        Return only sources explicitly cited by the model.
+        Return sources grounded in successful retrieval tools.
 
-        Any chunk ID that was not present in a real tool result
-        is ignored, even if the model returned it.
+        Search results remain limited to chunk IDs explicitly cited by
+        the model. A successful read_asset call is itself an explicit
+        whole-document citation, so its asset is returned even though
+        the final-answer contract intentionally uses no chunk IDs for
+        full-document reads.
         """
-
-        if not used_chunk_ids:
-            return []
 
         source_by_chunk_id: dict[
             int,
             KnowledgeAgentSource,
         ] = {}
+        read_asset_sources: list[
+            KnowledgeAgentSource
+        ] = []
+        seen_read_assets: set[
+            tuple[int | None, str]
+        ] = set()
 
         for history_item in tool_history:
-            if (
-                history_item.get("tool_name")
-                != "search_project_chunks"
-            ):
-                continue
-
             execution_result = (
                 history_item.get(
                     "execution_result"
@@ -391,6 +524,43 @@ class KnowledgeAgentController(BaseController):
             )
 
             if not tool_result.get("success"):
+                continue
+
+            if history_item.get("tool_name") == "read_asset":
+                asset_name = str(
+                    tool_result.get("asset_name") or ""
+                ).strip()
+                asset_id = tool_result.get("asset_id")
+
+                if not asset_name:
+                    continue
+
+                normalized_asset_id = (
+                    asset_id
+                    if isinstance(asset_id, int)
+                    else None
+                )
+                source_key = (
+                    normalized_asset_id,
+                    asset_name,
+                )
+
+                if source_key in seen_read_assets:
+                    continue
+
+                seen_read_assets.add(source_key)
+                read_asset_sources.append(
+                    KnowledgeAgentSource(
+                        asset_id=normalized_asset_id,
+                        asset_name=asset_name,
+                    )
+                )
+                continue
+
+            if (
+                history_item.get("tool_name")
+                != "search_project_chunks"
+            ):
                 continue
 
             search_results = (
@@ -419,7 +589,7 @@ class KnowledgeAgentController(BaseController):
 
         selected_sources: list[
             KnowledgeAgentSource
-        ] = []
+        ] = list(read_asset_sources)
 
         seen_chunk_ids: set[int] = set()
 

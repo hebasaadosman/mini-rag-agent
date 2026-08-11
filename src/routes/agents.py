@@ -4,6 +4,7 @@ from fastapi import (
     Request,
     status,
 )
+from fastapi.responses import StreamingResponse
 
 from agents.knowledge_agent.schemas import (
     KnowledgeAgentRequest,
@@ -11,6 +12,7 @@ from agents.knowledge_agent.schemas import (
     KnowledgeAgentResumeRequest,
     KnowledgeAgentMemoryResponse,
 )
+from agents.knowledge_agent.streaming import encode_sse, with_heartbeat
 from controllers import KnowledgeAgentController
 from models.ProjectModel import ProjectModel
 
@@ -57,6 +59,63 @@ async def chat_with_knowledge_agent(
             message=payload.message,
             thread_id=payload.thread_id,
         )
+
+
+@agents_router.post(
+    "/knowledge/{project_id}/chat/stream",
+    response_class=StreamingResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        200: {
+            "description": "Server-Sent Events from the knowledge agent.",
+            "content": {
+                "text/event-stream": {
+                    "schema": {"type": "string"},
+                }
+            },
+        }
+    },
+)
+async def stream_knowledge_agent_chat(
+    request: Request,
+    project_id: int,
+    payload: KnowledgeAgentRequest,
+):
+    project_model = await ProjectModel.create_instance(
+        db_client=request.app.db_client,
+    )
+    controller = KnowledgeAgentController(
+        generation_client=request.app.generation_client,
+        tools_service=request.app.knowledge_agent_tools_service,
+        project_model=project_model,
+        checkpointer=request.app.checkpointer,
+        max_memory_messages=request.app.agent_memory_max_messages,
+    )
+    lock_key = f"{project_id}:{payload.thread_id.strip()}"
+
+    async def event_generator():
+        async with request.app.agent_thread_locks.acquire(lock_key):
+            events = controller.chat_stream(
+                project_id=project_id,
+                message=payload.message,
+                thread_id=payload.thread_id,
+            )
+            async for event in with_heartbeat(events):
+                if await request.is_disconnected():
+                    break
+                yield encode_sse(
+                    event=str(event["event"]),
+                    data=event.get("data") or {},
+                )
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @agents_router.get(
@@ -133,6 +192,63 @@ async def resume_knowledge_agent(
             thread_id=payload.thread_id,
             response=payload.response,
         )
+
+
+@agents_router.post(
+    "/knowledge/{project_id}/chat/resume/stream",
+    response_class=StreamingResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        200: {
+            "description": "Resume an interrupted agent as Server-Sent Events.",
+            "content": {
+                "text/event-stream": {
+                    "schema": {"type": "string"},
+                }
+            },
+        }
+    },
+)
+async def stream_resumed_knowledge_agent_chat(
+    request: Request,
+    project_id: int,
+    payload: KnowledgeAgentResumeRequest,
+):
+    project_model = await ProjectModel.create_instance(
+        db_client=request.app.db_client,
+    )
+    controller = KnowledgeAgentController(
+        generation_client=request.app.generation_client,
+        tools_service=request.app.knowledge_agent_tools_service,
+        project_model=project_model,
+        checkpointer=request.app.checkpointer,
+        max_memory_messages=request.app.agent_memory_max_messages,
+    )
+    lock_key = f"{project_id}:{payload.thread_id.strip()}"
+
+    async def event_generator():
+        async with request.app.agent_thread_locks.acquire(lock_key):
+            events = controller.resume_stream(
+                project_id=project_id,
+                thread_id=payload.thread_id,
+                response=payload.response,
+            )
+            async for event in with_heartbeat(events):
+                if await request.is_disconnected():
+                    break
+                yield encode_sse(
+                    event=str(event["event"]),
+                    data=event.get("data") or {},
+                )
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @agents_router.get(

@@ -1,4 +1,6 @@
+import asyncio
 import logging
+from collections.abc import Callable, Iterator
 from typing import Any, List, Union
 import json
 import cohere
@@ -142,19 +144,7 @@ class CohereProvider(LLMInterface):
                 self.default_generation_max_output_tokens
             )
 
-        normalized_tool_choice = tool_choice
-
-        if isinstance(tool_choice, str):
-            tool_choice_mapping = {
-                "auto": None,
-                "required": "REQUIRED",
-                "none": "NONE",
-            }
-
-            normalized_tool_choice = tool_choice_mapping.get(
-                tool_choice.lower(),
-                tool_choice,
-            )
+        normalized_tool_choice = self._normalize_tool_choice(tool_choice)
 
         request_kwargs: dict[str, Any] = {
             "model": self.generation_model_id,
@@ -245,6 +235,148 @@ class CohereProvider(LLMInterface):
                 None,
             ),
         }
+
+    async def generate_tool_response_stream(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        tool_choice: str | dict = "auto",
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        on_content_delta: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
+        """Stream Cohere V2 content and normalize tool-call deltas."""
+
+        if not self.client:
+            raise RuntimeError("Cohere client is not initialized.")
+        if not self.generation_model_id:
+            raise RuntimeError("Cohere generation model ID is not configured.")
+
+        resolved_temperature = (
+            self.default_generation_temperature
+            if temperature is None
+            else temperature
+        )
+        resolved_max_tokens = (
+            self.default_generation_max_output_tokens
+            if max_tokens is None
+            else max_tokens
+        )
+        normalized_tool_choice = self._normalize_tool_choice(tool_choice)
+        request_kwargs: dict[str, Any] = {
+            "model": self.generation_model_id,
+            "messages": messages,
+            "tools": tools,
+            "max_tokens": resolved_max_tokens,
+            "temperature": resolved_temperature,
+        }
+        if normalized_tool_choice is not None:
+            request_kwargs["tool_choice"] = normalized_tool_choice
+
+        try:
+            stream = await asyncio.to_thread(
+                self.client.chat_stream,
+                **request_kwargs,
+            )
+        except TypeError:
+            request_kwargs.pop("tool_choice", None)
+            stream = await asyncio.to_thread(
+                self.client.chat_stream,
+                **request_kwargs,
+            )
+
+        content_parts: list[str] = []
+        tool_calls_by_index: dict[int, dict[str, Any]] = {}
+        finish_reason: str | None = None
+        iterator = iter(stream)
+
+        while True:
+            has_event, event = await asyncio.to_thread(
+                self._next_stream_event,
+                iterator,
+            )
+            if not has_event:
+                break
+
+            event_type = getattr(event, "type", "")
+            delta = getattr(event, "delta", None)
+            message = getattr(delta, "message", None)
+
+            if event_type == "content-delta":
+                content = getattr(message, "content", None)
+                text = str(getattr(content, "text", "") or "")
+                if text:
+                    content_parts.append(text)
+                    if on_content_delta is not None:
+                        on_content_delta(text)
+                continue
+
+            if event_type == "tool-call-start":
+                index = int(getattr(event, "index", 0) or 0)
+                tool_call = getattr(message, "tool_calls", None)
+                function = getattr(tool_call, "function", None)
+                tool_calls_by_index[index] = {
+                    "id": str(getattr(tool_call, "id", "") or ""),
+                    "type": str(
+                        getattr(tool_call, "type", "function")
+                        or "function"
+                    ),
+                    "name": str(getattr(function, "name", "") or ""),
+                    "arguments": str(
+                        getattr(function, "arguments", "") or ""
+                    ),
+                }
+                continue
+
+            if event_type == "tool-call-delta":
+                index = int(getattr(event, "index", 0) or 0)
+                accumulated = tool_calls_by_index.setdefault(
+                    index,
+                    {
+                        "id": "",
+                        "type": "function",
+                        "name": "",
+                        "arguments": "",
+                    },
+                )
+                tool_call = getattr(message, "tool_calls", None)
+                function = getattr(tool_call, "function", None)
+                accumulated["arguments"] += str(
+                    getattr(function, "arguments", "") or ""
+                )
+                continue
+
+            if event_type == "message-end":
+                finish_reason = str(
+                    getattr(delta, "finish_reason", "") or ""
+                )
+
+        return {
+            "content": "".join(content_parts),
+            "tool_calls": [
+                tool_calls_by_index[index]
+                for index in sorted(tool_calls_by_index)
+            ],
+            "finish_reason": finish_reason,
+        }
+
+    @staticmethod
+    def _normalize_tool_choice(tool_choice: str | dict) -> str | dict | None:
+        if not isinstance(tool_choice, str):
+            return tool_choice
+        return {
+            "auto": None,
+            "required": "REQUIRED",
+            "none": "NONE",
+        }.get(tool_choice.lower(), tool_choice)
+
+    @staticmethod
+    def _next_stream_event(iterator: Iterator[Any]) -> tuple[bool, Any]:
+        try:
+            return True, next(iterator)
+        except StopIteration:
+            return False, None
     def generate_embedding(
         self,
         text: Union[str, List[str]],
