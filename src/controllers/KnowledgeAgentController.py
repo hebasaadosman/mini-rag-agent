@@ -95,7 +95,7 @@ class KnowledgeAgentController(BaseController):
                 ),
             )
 
-        agent = self._build_agent(project_id=project_id)
+        agent = self.build_agent(project_id=project_id)
 
         try:
             result = await agent.run(
@@ -144,7 +144,7 @@ class KnowledgeAgentController(BaseController):
                 error=f"Project with ID {project_id} was not found.",
             )
 
-        agent = self._build_agent(project_id=project_id)
+        agent = self.build_agent(project_id=project_id)
         try:
             result = await agent.resume(
                 thread_id=normalized_thread_id,
@@ -183,7 +183,7 @@ class KnowledgeAgentController(BaseController):
             yield self._terminal_stream_event(validation_error)
             return
 
-        agent = self._build_agent(project_id=project_id)
+        agent = self.build_agent(project_id=project_id)
         yield {
             "event": "started",
             "data": {
@@ -237,7 +237,7 @@ class KnowledgeAgentController(BaseController):
             yield self._terminal_stream_event(validation_error)
             return
 
-        agent = self._build_agent(project_id=project_id)
+        agent = self.build_agent(project_id=project_id)
         yield {
             "event": "started",
             "data": {
@@ -296,7 +296,7 @@ class KnowledgeAgentController(BaseController):
                 error=f"Project with ID {project_id} was not found.",
             )
 
-        agent = self._build_agent(project_id=project_id)
+        agent = self.build_agent(project_id=project_id)
         memory = await agent.get_memory(thread_id=normalized_thread_id)
         return KnowledgeAgentMemoryResponse(
             success=True,
@@ -331,7 +331,7 @@ class KnowledgeAgentController(BaseController):
                 error=f"Project with ID {project_id} was not found.",
             )
 
-        agent = self._build_agent(project_id=project_id)
+        agent = self.build_agent(project_id=project_id)
         before = await agent.get_memory(thread_id=normalized_thread_id)
         await agent.clear_memory(thread_id=normalized_thread_id)
         return KnowledgeAgentMemoryResponse(
@@ -421,7 +421,9 @@ class KnowledgeAgentController(BaseController):
             "data": response.model_dump(mode="json"),
         }
 
-    def _build_agent(self, *, project_id: int) -> KnowledgeAgent:
+    def build_agent(self, project_id: int) -> KnowledgeAgent:
+        """Build the project-scoped core used by direct and routed chat."""
+
         return KnowledgeAgent(
             project_id=project_id,
             llm_provider=self.generation_client,
