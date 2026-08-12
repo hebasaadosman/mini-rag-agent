@@ -1,5 +1,16 @@
 from enum import Enum
 from typing import Any, TypedDict
+from typing_extensions import Annotated
+
+
+def replace_messages(
+    current: list[dict[str, Any]] | None,
+    update: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Persist the latest bounded canonical conversation snapshot."""
+
+    return list(update or [])
+
 
 
 class AgentName(str, Enum):
@@ -26,7 +37,7 @@ class MultiAgentState(TypedDict, total=False):
     gate_decision: dict[str, Any] | None
 
     user_message: str
-    messages: list[dict[str, Any]]
+    messages: Annotated[list[dict[str, Any]], replace_messages]
     tool_history: list[dict[str, Any]]
 
     supervisor_decision: dict[str, Any] | None

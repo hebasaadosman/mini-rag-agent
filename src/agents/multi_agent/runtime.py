@@ -137,6 +137,7 @@ class MultiAgentRuntime:
             TaskStatus.FAILED,
             TaskStatus.IDLE,
         }:
+            saved_messages = checkpoint.get("messages")
             update.update(
                 {
                     "supervisor_decision": None,
@@ -150,6 +151,8 @@ class MultiAgentRuntime:
                     "final_response": None,
                 }
             )
+            if saved_messages is not None:
+                update["messages"] = list(saved_messages)
         return update
 
     @staticmethod

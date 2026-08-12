@@ -5,9 +5,17 @@ from agents.multi_agent import (
     TaskStatus,
     build_initial_multi_agent_state,
 )
+from agents.multi_agent.state import replace_messages
 
 
 class MultiAgentStateTests(unittest.TestCase):
+    def test_message_reducer_replaces_with_latest_bounded_snapshot(self):
+        old = [{"role": "user", "content": "old"}]
+        new = [{"role": "user", "content": "new"}]
+
+        self.assertEqual(replace_messages(old, new), new)
+        self.assertIsNot(replace_messages(old, new), new)
+
     def test_agent_names_are_stable_strings(self):
         self.assertEqual(AgentName.SUPERVISOR.value, "supervisor")
         self.assertEqual(AgentName.KNOWLEDGE.value, "knowledge")

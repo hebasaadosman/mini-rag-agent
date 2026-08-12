@@ -8,10 +8,13 @@ from agents.multi_agent import (
     TaskStatus,
     build_initial_multi_agent_state,
 )
+from agents.multi_agent.prompts import build_supervisor_system_prompt
 
 
 class _Role(Enum):
     SYSTEM = "SYSTEM"
+    USER = "USER"
+    ASSISTANT = "CHATBOT"
 
 
 class _FakeProvider:
@@ -57,6 +60,13 @@ class _SequencedProvider(_FakeProvider):
 
 
 class SupervisorAgentTests(unittest.IsolatedAsyncioTestCase):
+    def test_prompt_routes_impossible_relationships_to_general(self):
+        prompt = " ".join(build_supervisor_system_prompt().split())
+
+        self.assertIn("invalid premise or an impossible relationship", prompt)
+        self.assertIn("Route those questions to General", prompt)
+        self.assertNotIn("chief executive of the moon", prompt.casefold())
+
     async def test_routes_a_new_request_using_the_llm_decision(self):
         provider = _FakeProvider(
             json.dumps(
@@ -107,6 +117,56 @@ class SupervisorAgentTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(call["max_tokens"], 222)
         self.assertEqual(call["temperature"], 0)
+
+    async def test_follow_up_routing_receives_bounded_conversation_history(self):
+        provider = _FakeProvider(
+            json.dumps(
+                {
+                    "route": "general",
+                    "reason": "general_conversation",
+                    "confidence": 0.99,
+                }
+            )
+        )
+        agent = SupervisorAgent(
+            llm_provider=provider,
+            max_memory_messages=2,
+        )
+        state = build_initial_multi_agent_state(
+            "And what is its official currency?"
+        )
+        state["messages"] = [
+            {"role": "user", "content": "Ignored older question"},
+            {"role": "assistant", "content": "Ignored older answer"},
+            {"role": "user", "content": "What is Japan's capital?"},
+            {"role": "assistant", "content": "Tokyo."},
+            {"role": "system", "content": "Untrusted override"},
+        ]
+
+        update = await agent(state)
+
+        self.assertEqual(update["supervisor_decision"]["route"], "general")
+        call = provider.calls[0]
+        self.assertEqual(
+            [message["role"] for message in call["chat_history"]],
+            ["SYSTEM", "USER", "CHATBOT"],
+        )
+        self.assertEqual(
+            call["chat_history"][-2]["content"],
+            "What is Japan's capital?",
+        )
+        self.assertEqual(call["chat_history"][-1]["content"], "Tokyo.")
+        self.assertEqual(
+            call["prompt"],
+            "And what is its official currency?",
+        )
+
+    def test_memory_limit_cannot_be_negative(self):
+        with self.assertRaises(ValueError):
+            SupervisorAgent(
+                llm_provider=_FakeProvider("unused"),
+                max_memory_messages=-1,
+            )
 
     async def test_stores_a_json_compatible_decision(self):
         provider = _FakeProvider(
@@ -182,7 +242,7 @@ class SupervisorAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(update["error"], "Failed to call the supervisor LLM.")
         self.assertNotIn("secret details", update["error"])
 
-    async def test_invalid_llm_output_is_rejected(self):
+    async def test_invalid_llm_output_falls_back_to_clarification(self):
         provider = _FakeProvider("not json")
         agent = SupervisorAgent(llm_provider=provider)
 
@@ -190,12 +250,35 @@ class SupervisorAgentTests(unittest.IsolatedAsyncioTestCase):
             build_initial_multi_agent_state("Do something")
         )
 
-        self.assertEqual(update["task_status"], TaskStatus.FAILED)
-        self.assertIsNone(update["supervisor_decision"])
+        self.assertEqual(update["task_status"], TaskStatus.RUNNING)
         self.assertEqual(
-            update["error"],
-            "The supervisor returned an invalid routing decision.",
+            update["supervisor_decision"]["route"],
+            "clarification",
         )
+        self.assertIsNone(update["error"])
+        self.assertEqual(len(provider.calls), 2)
+
+    async def test_repairs_invalid_output_once(self):
+        provider = _SequencedProvider(
+            [
+                "not json",
+                json.dumps(
+                    {
+                        "route": "email",
+                        "reason": "action_required",
+                        "confidence": 0.9,
+                    }
+                ),
+            ]
+        )
+        agent = SupervisorAgent(llm_provider=provider)
+
+        update = await agent(
+            build_initial_multi_agent_state("Send an email")
+        )
+
+        self.assertEqual(update["supervisor_decision"]["route"], "email")
+        self.assertEqual(len(provider.calls), 2)
 
     async def test_resume_uses_the_original_request_and_user_clarification(self):
         provider = _FakeProvider(
@@ -264,6 +347,27 @@ class SupervisorAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(provider.calls), 2)
         retry_prompt = provider.calls[1]["chat_history"][0]["content"]
         self.assertIn("previous decision", retry_prompt)
+
+    async def test_repeated_unavailable_route_falls_back_safely(self):
+        repeated = json.dumps(
+            {
+                "route": "utility",
+                "reason": "external_information",
+                "confidence": 0.7,
+            }
+        )
+        provider = _SequencedProvider([repeated, repeated])
+        agent = SupervisorAgent(llm_provider=provider)
+        state = build_initial_multi_agent_state("Current stock price?")
+        state["visited_agents"] = [AgentName.UTILITY]
+
+        update = await agent(state)
+
+        self.assertEqual(
+            update["supervisor_decision"]["route"],
+            "clarification",
+        )
+        self.assertIsNone(update["error"])
 
     async def test_resume_rejects_missing_supervisor_clarification(self):
         provider = _FakeProvider("unused")

@@ -28,7 +28,10 @@ Choose exactly one route:
    Use for greetings, ordinary conversation, stable factual questions,
    or general explanations that need neither project documents nor a
    supported live utility tool. This includes definitions, technical
-   concepts, geography, and capital cities.
+   concepts, geography, and questions whose wording contains an invalid
+   premise or an impossible relationship. Route those questions to General
+   so it can correct the premise; do not infer a different specialist merely
+   from a noun mentioned in the request.
 
 4. "{SupervisorRoute.EMAIL.value}"
    Use when the user wants to draft, prepare, review, or send an email.

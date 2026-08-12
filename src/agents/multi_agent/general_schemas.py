@@ -1,17 +1,18 @@
 from pydantic import BaseModel, Field, model_validator
 
-from .specialist_schemas import SpecialistAction
+from .specialist_schemas import HandoffReason, SpecialistAction
 
 
 class GeneralSemanticReview(BaseModel):
     """Structured evidence used to validate a General Agent answer."""
 
-    entity_types: list[str] = Field(min_length=1)
+    entity_types: list[str] = Field(default_factory=list)
     embedded_assumptions: list[str] = Field(default_factory=list)
-    relationship_valid: bool
+    relationship_valid: bool | None = None
     verdict: str
     action: SpecialistAction
     answer: str | None = None
+    handoff_reason: HandoffReason | None = None
     question: str | None = None
     options: list[str] = Field(default_factory=list)
 
@@ -21,14 +22,18 @@ class GeneralSemanticReview(BaseModel):
             item.strip() for item in self.entity_types if item.strip()
         ]
         self.verdict = self.verdict.strip()
-        if not self.entity_types or not self.verdict:
-            raise ValueError("Semantic review evidence cannot be blank.")
+        if not self.verdict:
+            raise ValueError("Decision review verdict cannot be blank.")
 
         if self.action == SpecialistAction.ANSWER:
             if not self.answer or not self.answer.strip():
                 raise ValueError("A reviewed answer is required.")
             self.answer = self.answer.strip()
-            if self.question is not None or self.options:
+            if (
+                self.handoff_reason is not None
+                or self.question is not None
+                or self.options
+            ):
                 raise ValueError("An answer cannot ask clarification.")
             return self
 
@@ -36,8 +41,12 @@ class GeneralSemanticReview(BaseModel):
             if not self.question or not self.question.strip():
                 raise ValueError("A reviewed clarification is required.")
             self.question = self.question.strip()
-            if self.answer is not None:
+            if self.answer is not None or self.handoff_reason is not None:
                 raise ValueError("A clarification cannot answer.")
             return self
 
-        raise ValueError("Semantic review cannot request a handoff.")
+        if self.handoff_reason is None:
+            raise ValueError("A reviewed handoff requires a reason.")
+        if self.answer is not None or self.question is not None or self.options:
+            raise ValueError("A handoff cannot answer or ask clarification.")
+        return self

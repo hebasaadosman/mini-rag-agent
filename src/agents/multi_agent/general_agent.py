@@ -102,14 +102,14 @@ class GeneralAgent:
                     "The general agent returned an invalid response."
                 )
 
-        if response.action == SpecialistAction.ANSWER:
-            response = await self._verify_answer(
-                user_message=user_message,
+        response = await self._review_decision(
+            user_message=user_message,
+            canonical_history=canonical_history,
+        )
+        if response is None:
+            return self._failure(
+                "The general agent decision could not be verified."
             )
-            if response is None:
-                return self._failure(
-                    "The general agent answer could not be verified."
-                )
 
         if response.action == SpecialistAction.HANDOFF:
             return build_handoff_update(
@@ -197,17 +197,64 @@ class GeneralAgent:
         except Exception:
             return None
 
-    async def _verify_answer(
+    async def _review_decision(
         self,
         *,
         user_message: str,
+        canonical_history: list[dict[str, str]],
     ) -> SpecialistResponse | None:
-        """Resolve one answer independently before publishing it."""
+        """Resolve a General decision independently before publishing it."""
 
         review_input = json.dumps(
-            {"original_request": user_message},
+            {
+                "task_instruction": (
+                    "original_request is the current user turn. Use "
+                    "conversation_context only to resolve references; answer "
+                    "the current request and do not repeat the last assistant "
+                    "answer unless the current turn asks for it."
+                ),
+                "conversation_context": canonical_history,
+                "original_request": user_message,
+                "current_request_focus": sorted(
+                    self._informative_terms(user_message)
+                ),
+            },
             ensure_ascii=False,
         )
+        focus_terms = self._informative_terms(user_message)
+        if canonical_history and focus_terms:
+            focused_request = (
+                "Answer this follow-up using the conversation context below. "
+                "The CURRENT REQUEST is the final line; answer it rather than "
+                "repeating the previous answer.\n\nConversation context:\n"
+                f"{self._format_history(canonical_history)}\n\n"
+                f"CURRENT REQUEST: {user_message}"
+            )
+            try:
+                system_message = self._llm_provider.construct_prompt(
+                    prompt=build_general_agent_system_prompt(),
+                    role=self._llm_provider.enums.SYSTEM.value,
+                )
+                focused_content = await asyncio.to_thread(
+                    self._llm_provider.generate_text,
+                    focused_request,
+                    chat_history=[system_message],
+                    max_tokens=self._max_tokens,
+                    temperature=0,
+                )
+                focused_response = SpecialistResponseParser.parse(
+                    focused_content
+                )
+                if (
+                    focused_response.action == SpecialistAction.ANSWER
+                    and self._answer_addresses_focus(
+                        focused_response.answer or "",
+                        focus_terms,
+                    )
+                ):
+                    return focused_response
+            except Exception:
+                pass
         try:
             system_message = self._llm_provider.construct_prompt(
                 prompt=build_general_semantic_review_prompt(),
@@ -225,9 +272,24 @@ class GeneralAgent:
         except Exception:
             return None
 
+        if not self._review_addresses_current_request(
+            review,
+            user_message=user_message,
+        ):
+            review = await self._repair_review(
+                review_input=review_input,
+            )
+            if review is None:
+                return None
+
         payload = {
             "action": review.action.value,
             "answer": review.answer,
+            "handoff_reason": (
+                review.handoff_reason.value
+                if review.handoff_reason is not None
+                else None
+            ),
             "question": review.question,
             "options": review.options,
         }
@@ -237,6 +299,119 @@ class GeneralAgent:
             )
         except SpecialistResponseParseError:
             return None
+
+    async def _repair_review(
+        self,
+        *,
+        review_input: str,
+    ) -> GeneralSemanticReview | None:
+        try:
+            system_message = self._llm_provider.construct_prompt(
+                prompt=(
+                    f"{build_general_semantic_review_prompt()}\n\n"
+                    "The previous review did not answer the current request. "
+                    "Resolve follow-up pronouns and omitted entities from "
+                    "conversation_context, then answer the attribute requested "
+                    "by original_request. Do not repeat an earlier answer for a "
+                    "different attribute."
+                ),
+                role=self._llm_provider.enums.SYSTEM.value,
+            )
+            repaired_content = await asyncio.to_thread(
+                self._llm_provider.generate_text,
+                review_input,
+                chat_history=[system_message],
+                max_tokens=self._max_tokens,
+                temperature=0,
+            )
+            return GeneralSemanticReview.model_validate_json(
+                repaired_content
+            )
+        except Exception:
+            return None
+
+    @staticmethod
+    def _review_addresses_current_request(
+        review: GeneralSemanticReview,
+        *,
+        user_message: str,
+    ) -> bool:
+        if review.action != SpecialistAction.ANSWER:
+            return True
+        requested_terms = GeneralAgent._informative_terms(user_message)
+        if not requested_terms:
+            return True
+        evidence = GeneralAgent._normalize_arabic_text(
+            " ".join(
+                [
+                    review.verdict,
+                    review.answer or "",
+                    *review.entity_types,
+                ]
+            ).casefold()
+        )
+        return any(term in evidence for term in requested_terms)
+
+    @staticmethod
+    def _answer_addresses_focus(
+        answer: str,
+        focus_terms: set[str],
+    ) -> bool:
+        evidence = GeneralAgent._normalize_arabic_text(
+            answer.casefold()
+        )
+        return any(term in evidence for term in focus_terms)
+
+    @staticmethod
+    def _informative_terms(user_message: str) -> set[str]:
+        stop_words = GeneralAgent._normalize_arabic_terms({
+            "and", "the", "what", "which", "this", "that", "its", "his", "her",
+            "their", "official", "و", "ما", "ماذا", "هي", "هو",
+            "وما", "له", "لها", "التي", "الذي", "الرسمية", "رسمي",
+        })
+        normalized = GeneralAgent._normalize_arabic_text("".join(
+            character if character.isalnum() else " "
+            for character in user_message.casefold()
+        ))
+        terms: set[str] = set()
+        for raw_term in normalized.split():
+            term = raw_term
+            if term.startswith("و") and len(term) > 4:
+                term = term[1:]
+            if term.endswith("ها") and len(term) > 4:
+                term = term[:-2]
+                if term.endswith("ت"):
+                    term = f"{term[:-1]}ة"
+            elif term.endswith("ي") and len(term) > 3:
+                term = term[:-1]
+            if len(term) > 2 and term not in stop_words:
+                terms.add(term)
+        return terms
+
+    @staticmethod
+    def _normalize_arabic_text(value: str) -> str:
+        return value.translate(
+            str.maketrans(
+                {
+                    "أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا",
+                    "ى": "ي", "ؤ": "و", "ئ": "ي", "ـ": "",
+                }
+            )
+        )
+
+    @staticmethod
+    def _normalize_arabic_terms(values: set[str]) -> set[str]:
+        return {
+            GeneralAgent._normalize_arabic_text(value)
+            for value in values
+        }
+
+    @staticmethod
+    def _format_history(messages: list[dict[str, str]]) -> str:
+        return "\n".join(
+            f"{message['role']}: {message['content']}"
+            for message in messages
+        )
 
     def _build_provider_history(
         self,
@@ -269,10 +444,23 @@ class GeneralAgent:
     ) -> list[dict[str, str]]:
         normalized: list[dict[str, str]] = []
         for message in messages:
-            if not isinstance(message, dict):
-                continue
-            role = message.get("role")
-            content = str(message.get("content") or "").strip()
+            if isinstance(message, dict):
+                role = message.get("role")
+                raw_content = message.get("content")
+            else:
+                role = getattr(message, "type", None)
+                raw_content = getattr(message, "content", None)
+                if raw_content is None:
+                    model_dump = getattr(message, "model_dump", None)
+                    if callable(model_dump):
+                        dumped = model_dump()
+                        role = dumped.get("type", role)
+                        raw_content = dumped.get("content")
+            role = {
+                "human": "user",
+                "ai": "assistant",
+            }.get(role, role)
+            content = str(raw_content or "").strip()
             if role not in {"user", "assistant"} or not content:
                 continue
             normalized.append({"role": role, "content": content})

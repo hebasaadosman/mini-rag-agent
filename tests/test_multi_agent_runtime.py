@@ -1,5 +1,6 @@
 import unittest
 
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
 from agents.multi_agent.graph import MultiAgentGraph
@@ -41,6 +42,44 @@ class MultiAgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, {"agent": "general"})
         self.assertEqual(dependencies["supervisor"].calls, 2)
         self.assertEqual(dependencies["general_agent"].calls, 2)
+
+    def test_new_turn_update_preserves_saved_messages_explicitly(self):
+        checkpoint = {
+            "task_status": "completed",
+            "messages": [
+                {"role": "user", "content": "First"},
+                {"role": "assistant", "content": "First answer"},
+            ],
+        }
+        initial = {
+            "user_message": "Second",
+            "project_id": 1,
+        }
+
+        update = MultiAgentRuntime._new_message_update(
+            checkpoint,
+            initial,
+        )
+
+        self.assertEqual(update["messages"], checkpoint["messages"])
+        self.assertIsNot(update["messages"], checkpoint["messages"])
+
+    def test_new_turn_update_preserves_langgraph_message_sequence(self):
+        saved = (
+            HumanMessage(content="First"),
+            AIMessage(content="First answer"),
+        )
+        checkpoint = {
+            "task_status": "completed",
+            "messages": saved,
+        }
+
+        update = MultiAgentRuntime._new_message_update(
+            checkpoint,
+            {"user_message": "Second"},
+        )
+
+        self.assertEqual(update["messages"], list(saved))
 
     async def test_resume_uses_the_saved_specialist_checkpoint(self):
         dependencies = _dependencies("utility")

@@ -65,7 +65,20 @@ class MultiAgentHandoffFlowTests(unittest.IsolatedAsyncioTestCase):
                         "action": "handoff",
                         "handoff_reason": "external_information",
                     }
-                )
+                ),
+                json.dumps(
+                    {
+                        "entity_types": ["city", "weather"],
+                        "embedded_assumptions": [],
+                        "relationship_valid": True,
+                        "verdict": "Weather requires current external data.",
+                        "action": "handoff",
+                        "answer": None,
+                        "handoff_reason": "external_information",
+                        "question": None,
+                        "options": [],
+                    }
+                ),
             ]
         )
         supervisor = SupervisorAgent(
@@ -126,7 +139,20 @@ class MultiAgentHandoffFlowTests(unittest.IsolatedAsyncioTestCase):
                         "action": "handoff",
                         "handoff_reason": "action_required",
                     }
-                )
+                ),
+                json.dumps(
+                    {
+                        "entity_types": ["recipient", "email action"],
+                        "embedded_assumptions": [],
+                        "relationship_valid": True,
+                        "verdict": "Sending email requires an action specialist.",
+                        "action": "handoff",
+                        "answer": None,
+                        "handoff_reason": "action_required",
+                        "question": None,
+                        "options": [],
+                    }
+                ),
             ]
         )
         supervisor = SupervisorAgent(

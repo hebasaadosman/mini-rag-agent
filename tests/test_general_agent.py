@@ -2,6 +2,8 @@ import json
 import unittest
 from enum import Enum
 
+from langchain_core.messages import AIMessage, HumanMessage
+
 from agents.multi_agent import (
     AgentName,
     GeneralAgent,
@@ -58,27 +60,28 @@ class _FakeProvider:
             isinstance(review_input, dict)
             and "original_request" in review_input
         ):
+            fixture = self._fixture_payload()
             return json.dumps(
                 {
-                    "entity_types": ["general request"],
+                    "entity_types": [],
                     "embedded_assumptions": [],
-                    "relationship_valid": True,
-                    "verdict": "The request can be answered.",
-                    "action": "answer",
-                    "answer": self._answer_from_fixture(),
-                    "question": None,
-                    "options": [],
+                    "relationship_valid": None,
+                    "verdict": "The decision is appropriate.",
+                    "action": fixture.get("action", "answer"),
+                    "answer": fixture.get("answer"),
+                    "handoff_reason": fixture.get("handoff_reason"),
+                    "question": fixture.get("question"),
+                    "options": fixture.get("options", []),
                 },
                 ensure_ascii=False,
             )
         return self.answer
 
-    def _answer_from_fixture(self):
+    def _fixture_payload(self):
         try:
-            parsed = json.loads(self.answer)
+            return json.loads(self.answer)
         except (TypeError, json.JSONDecodeError):
-            return "Verified answer."
-        return parsed.get("answer") or "Verified answer."
+            return {"action": "answer", "answer": "Verified answer."}
 
 
 class _SequencedProvider(_FakeProvider):
@@ -147,7 +150,7 @@ class GeneralAgentTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(state["task_status"], TaskStatus.COMPLETED)
         self.assertIsNone(state["resume_target"])
-        self.assertEqual(len(provider.calls), 3)
+        self.assertEqual(len(provider.calls), 4)
 
     async def test_completes_a_general_conversation_turn(self):
         provider = _FakeProvider(
@@ -248,6 +251,23 @@ class GeneralAgentTests(unittest.IsolatedAsyncioTestCase):
         history = provider.calls[0]["chat_history"]
         self.assertEqual(len(history), 1)
         self.assertEqual(history[0]["role"], "SYSTEM")
+
+    async def test_langgraph_message_objects_are_normalized(self):
+        provider = _FakeProvider()
+        agent = GeneralAgent(llm_provider=provider)
+        state = build_initial_multi_agent_state("What is its currency?")
+        state["messages"] = [
+            HumanMessage(content="What is Japan's capital?"),
+            AIMessage(content="Japan's capital is Tokyo."),
+        ]
+
+        await agent(state)
+
+        history = provider.calls[0]["chat_history"]
+        self.assertEqual(
+            [message["role"] for message in history],
+            ["SYSTEM", "USER", "CHATBOT"],
+        )
 
     async def test_blank_message_fails_without_calling_the_provider(self):
         provider = _FakeProvider()
@@ -371,7 +391,17 @@ class GeneralAgentTests(unittest.IsolatedAsyncioTestCase):
         review_payload = json.loads(review_call["prompt"])
         self.assertEqual(
             review_payload,
-            {"original_request": "What is the capital of this city?"},
+            {
+                "task_instruction": (
+                    "original_request is the current user turn. Use "
+                    "conversation_context only to resolve references; answer "
+                    "the current request and do not repeat the last assistant "
+                    "answer unless the current turn asks for it."
+                ),
+                "conversation_context": [],
+                "original_request": "What is the capital of this city?",
+                "current_request_focus": ["capital", "city"],
+            },
         )
         self.assertNotIn("The city is its own capital.", review_call["prompt"])
 
@@ -413,6 +443,131 @@ class GeneralAgentTests(unittest.IsolatedAsyncioTestCase):
             "review-interrupt-1",
         )
 
+    async def test_decision_reviewer_corrects_a_false_premise_handoff(self):
+        provider = _SequencedProvider(
+            [
+                json.dumps(
+                    {
+                        "action": "handoff",
+                        "handoff_reason": "external_information",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "entity_types": ["ocean"],
+                        "embedded_assumptions": [
+                            "An ocean has a political capital."
+                        ],
+                        "relationship_valid": False,
+                        "verdict": "The premise is invalid.",
+                        "action": "answer",
+                        "answer": (
+                            "An ocean does not have a political capital."
+                        ),
+                        "handoff_reason": None,
+                        "question": None,
+                        "options": [],
+                    }
+                ),
+            ]
+        )
+        agent = GeneralAgent(llm_provider=provider)
+
+        update = await agent(
+            build_initial_multi_agent_state(
+                "What is the capital of the Pacific Ocean?"
+            )
+        )
+
+        self.assertEqual(update["task_status"], TaskStatus.COMPLETED)
+        self.assertIn(
+            "does not have a political capital",
+            update["final_response"]["answer"],
+        )
+        self.assertNotIn("handoff_count", update)
+        self.assertIsNone(update["handoff_reason"])
+
+    async def test_decision_reviewer_accepts_conversation_without_entities(self):
+        provider = _SequencedProvider(
+            [
+                json.dumps(
+                    {"action": "answer", "answer": "Good morning!"}
+                ),
+                json.dumps(
+                    {
+                        "entity_types": [],
+                        "embedded_assumptions": [],
+                        "relationship_valid": None,
+                        "verdict": "This is an ordinary greeting.",
+                        "action": "answer",
+                        "answer": "Good morning!",
+                        "handoff_reason": None,
+                        "question": None,
+                        "options": [],
+                    }
+                ),
+            ]
+        )
+        agent = GeneralAgent(llm_provider=provider)
+
+        update = await agent(build_initial_multi_agent_state("Good morning"))
+
+        self.assertEqual(update["task_status"], TaskStatus.COMPLETED)
+        self.assertEqual(update["final_response"]["answer"], "Good morning!")
+
+    async def test_reviewer_repairs_a_follow_up_that_repeats_old_answer(self):
+        provider = _SequencedProvider(
+            [
+                json.dumps(
+                    {"action": "answer", "answer": "Japan's currency is yen."}
+                ),
+                json.dumps(
+                    {
+                        "entity_types": ["country", "capital"],
+                        "embedded_assumptions": [],
+                        "relationship_valid": True,
+                        "verdict": "Tokyo is Japan's capital.",
+                        "action": "answer",
+                        "answer": "Japan's capital is Tokyo.",
+                        "handoff_reason": None,
+                        "question": None,
+                        "options": [],
+                    }
+                ),
+                json.dumps(
+                    {
+                        "entity_types": ["country", "currency"],
+                        "embedded_assumptions": [],
+                        "relationship_valid": True,
+                        "verdict": "The current request asks for currency.",
+                        "action": "answer",
+                        "answer": "Japan's official currency is the yen.",
+                        "handoff_reason": None,
+                        "question": None,
+                        "options": [],
+                    }
+                ),
+            ]
+        )
+        agent = GeneralAgent(llm_provider=provider)
+        state = build_initial_multi_agent_state("What is its currency?")
+        state["messages"] = [
+            {"role": "user", "content": "What is Japan's capital?"},
+            {"role": "assistant", "content": "Japan's capital is Tokyo."},
+        ]
+
+        update = await agent(state)
+
+        self.assertEqual(
+            update["final_response"]["answer"],
+            "Japan's official currency is the yen.",
+        )
+        self.assertEqual(len(provider.calls), 3)
+        self.assertIn(
+            "current request",
+            provider.calls[2]["chat_history"][0]["content"],
+        )
+
     def test_prompt_establishes_the_ai_rag_context(self):
         prompt = build_general_agent_system_prompt()
 
@@ -429,7 +584,12 @@ class GeneralAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("claims to verify, not as facts", normalized_prompt)
         self.assertIn("possibly misspelled entity", normalized_prompt)
         self.assertIn("ask one precise clarification", normalized_prompt)
+        self.assertIn("follow-up references", normalized_prompt)
+        self.assertIn("current question", normalized_prompt)
+        self.assertIn("invalid relationship", normalized_prompt)
+        self.assertIn("stable general knowledge", normalized_prompt)
         self.assertNotIn("القاهرة", prompt)
+        self.assertNotIn("chief executive of the moon", prompt.casefold())
 
     async def test_out_of_scope_request_returns_a_handoff(self):
         provider = _FakeProvider(
@@ -463,6 +623,18 @@ class GeneralAgentTests(unittest.IsolatedAsyncioTestCase):
                 llm_provider=_FakeProvider(),
                 max_memory_messages=1,
             )
+
+    def test_follow_up_terms_normalize_arabic_possessive_suffix(self):
+        self.assertEqual(
+            GeneralAgent._informative_terms("وما عملتها الرسمية؟"),
+            {"عملة"},
+        )
+
+    def test_follow_up_terms_normalize_arabic_hamza(self):
+        self.assertIn(
+            "اسم",
+            GeneralAgent._informative_terms("ما اسمي؟"),
+        )
 
 
 if __name__ == "__main__":
