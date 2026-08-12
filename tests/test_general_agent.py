@@ -50,7 +50,35 @@ class _FakeProvider:
         )
         if self.error is not None:
             raise self.error
+        try:
+            review_input = json.loads(prompt)
+        except (TypeError, json.JSONDecodeError):
+            review_input = None
+        if (
+            isinstance(review_input, dict)
+            and "original_request" in review_input
+        ):
+            return json.dumps(
+                {
+                    "entity_types": ["general request"],
+                    "embedded_assumptions": [],
+                    "relationship_valid": True,
+                    "verdict": "The request can be answered.",
+                    "action": "answer",
+                    "answer": self._answer_from_fixture(),
+                    "question": None,
+                    "options": [],
+                },
+                ensure_ascii=False,
+            )
         return self.answer
+
+    def _answer_from_fixture(self):
+        try:
+            parsed = json.loads(self.answer)
+        except (TypeError, json.JSONDecodeError):
+            return "Verified answer."
+        return parsed.get("answer") or "Verified answer."
 
 
 class _SequencedProvider(_FakeProvider):
@@ -60,7 +88,33 @@ class _SequencedProvider(_FakeProvider):
 
     def generate_text(self, *args, **kwargs):
         super().generate_text(*args, **kwargs)
-        return next(self._answers)
+        result = next(self._answers)
+        prompt = args[0] if args else kwargs.get("prompt")
+        try:
+            review_input = json.loads(prompt)
+            parsed_result = json.loads(result)
+        except (TypeError, json.JSONDecodeError):
+            return result
+        if (
+            isinstance(review_input, dict)
+            and "original_request" in review_input
+            and isinstance(parsed_result, dict)
+            and "entity_types" not in parsed_result
+        ):
+            return json.dumps(
+                {
+                    "entity_types": ["general request"],
+                    "embedded_assumptions": [],
+                    "relationship_valid": True,
+                    "verdict": "The proposed answer is consistent.",
+                    "action": parsed_result.get("action"),
+                    "answer": parsed_result.get("answer"),
+                    "question": parsed_result.get("question"),
+                    "options": parsed_result.get("options", []),
+                },
+                ensure_ascii=False,
+            )
+        return result
 
 
 class GeneralAgentTests(unittest.IsolatedAsyncioTestCase):
@@ -93,7 +147,7 @@ class GeneralAgentTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(state["task_status"], TaskStatus.COMPLETED)
         self.assertIsNone(state["resume_target"])
-        self.assertEqual(len(provider.calls), 2)
+        self.assertEqual(len(provider.calls), 3)
 
     async def test_completes_a_general_conversation_turn(self):
         provider = _FakeProvider(
@@ -238,6 +292,19 @@ class GeneralAgentTests(unittest.IsolatedAsyncioTestCase):
                 "أهلًا يا هبة، سأتحدث معك بالعربية.",
                 json.dumps(
                     {
+                        "entity_types": ["person"],
+                        "embedded_assumptions": [],
+                        "relationship_valid": True,
+                        "verdict": "The greeting is consistent.",
+                        "action": "answer",
+                        "answer": "أهلًا يا هبة، سأتحدث معك بالعربية.",
+                        "question": None,
+                        "options": [],
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
                         "action": "answer",
                         "answer": "أهلًا يا هبة، سأتحدث معك بالعربية.",
                     },
@@ -255,8 +322,96 @@ class GeneralAgentTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(update["task_status"], TaskStatus.COMPLETED)
         self.assertEqual(update["final_response"]["agent"], "general")
-        self.assertEqual(len(provider.calls), 2)
+        self.assertEqual(len(provider.calls), 3)
         self.assertIn("did not match", provider.calls[1]["prompt"])
+
+    async def test_semantic_reviewer_corrects_a_false_premise(self):
+        provider = _SequencedProvider(
+            [
+                json.dumps(
+                    {
+                        "action": "answer",
+                        "answer": "The city is its own capital.",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "entity_types": ["city", "capital relationship"],
+                        "embedded_assumptions": [
+                            "The city can itself have a capital."
+                        ],
+                        "relationship_valid": False,
+                        "verdict": "The premise is invalid.",
+                        "action": "answer",
+                        "answer": (
+                            "A city does not have a capital; it may itself "
+                            "be the capital of a country or region."
+                        ),
+                        "question": None,
+                        "options": [],
+                    }
+                ),
+            ]
+        )
+        agent = GeneralAgent(llm_provider=provider)
+
+        update = await agent(
+            build_initial_multi_agent_state(
+                "What is the capital of this city?"
+            )
+        )
+
+        self.assertEqual(update["task_status"], TaskStatus.COMPLETED)
+        self.assertIn(
+            "does not have a capital",
+            update["final_response"]["answer"],
+        )
+        review_call = provider.calls[1]
+        self.assertEqual(review_call["temperature"], 0)
+        review_payload = json.loads(review_call["prompt"])
+        self.assertEqual(
+            review_payload,
+            {"original_request": "What is the capital of this city?"},
+        )
+        self.assertNotIn("The city is its own capital.", review_call["prompt"])
+
+    async def test_semantic_reviewer_can_request_clarification(self):
+        provider = _SequencedProvider(
+            [
+                json.dumps(
+                    {"action": "answer", "answer": "I cannot tell."}
+                ),
+                json.dumps(
+                    {
+                        "entity_types": ["unknown place"],
+                        "embedded_assumptions": [],
+                        "relationship_valid": False,
+                        "verdict": "The place cannot be identified.",
+                        "action": "clarification",
+                        "answer": None,
+                        "question": "Which place do you mean?",
+                        "options": [],
+                    }
+                ),
+            ]
+        )
+        agent = GeneralAgent(
+            llm_provider=provider,
+            interrupt_id_factory=lambda: "review-interrupt-1",
+        )
+
+        update = await agent(
+            build_initial_multi_agent_state(
+                "What is the capital of the unknown place?"
+            )
+        )
+
+        self.assertEqual(update["task_status"], TaskStatus.WAITING_FOR_USER)
+        self.assertEqual(update["resume_target"], AgentName.GENERAL)
+        self.assertEqual(
+            update["pending_interrupt"]["interrupt_id"],
+            "review-interrupt-1",
+        )
 
     def test_prompt_establishes_the_ai_rag_context(self):
         prompt = build_general_agent_system_prompt()
@@ -264,6 +419,17 @@ class GeneralAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("AI project knowledge assistant", prompt)
         self.assertIn("Retrieval-Augmented Generation", prompt)
         self.assertIn("false premise", prompt)
+
+    def test_prompt_requires_general_entity_relationship_validation(self):
+        prompt = build_general_agent_system_prompt()
+        normalized_prompt = " ".join(prompt.split())
+
+        self.assertIn("identify the type of each entity", normalized_prompt)
+        self.assertIn("requested relationship", normalized_prompt)
+        self.assertIn("claims to verify, not as facts", normalized_prompt)
+        self.assertIn("possibly misspelled entity", normalized_prompt)
+        self.assertIn("ask one precise clarification", normalized_prompt)
+        self.assertNotIn("القاهرة", prompt)
 
     async def test_out_of_scope_request_returns_a_handoff(self):
         provider = _FakeProvider(

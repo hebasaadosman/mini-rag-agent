@@ -1,7 +1,12 @@
 import asyncio
+import json
 from typing import Any
 
-from .general_prompts import build_general_agent_system_prompt
+from .general_prompts import (
+    build_general_agent_system_prompt,
+    build_general_semantic_review_prompt,
+)
+from .general_schemas import GeneralSemanticReview
 from .handoff import build_handoff_update
 from .specialist_parser import (
     SpecialistResponseParseError,
@@ -13,7 +18,7 @@ from .specialist_hitl import (
     build_specialist_clarification_update,
     get_specialist_resume_message,
 )
-from .specialist_schemas import SpecialistAction
+from .specialist_schemas import SpecialistAction, SpecialistResponse
 from .state import AgentName, MultiAgentState, TaskStatus
 
 
@@ -95,6 +100,15 @@ class GeneralAgent:
             if response is None:
                 return self._failure(
                     "The general agent returned an invalid response."
+                )
+
+        if response.action == SpecialistAction.ANSWER:
+            response = await self._verify_answer(
+                user_message=user_message,
+            )
+            if response is None:
+                return self._failure(
+                    "The general agent answer could not be verified."
                 )
 
         if response.action == SpecialistAction.HANDOFF:
@@ -181,6 +195,47 @@ class GeneralAgent:
             )
             return SpecialistResponseParser.parse(repaired_content)
         except Exception:
+            return None
+
+    async def _verify_answer(
+        self,
+        *,
+        user_message: str,
+    ) -> SpecialistResponse | None:
+        """Resolve one answer independently before publishing it."""
+
+        review_input = json.dumps(
+            {"original_request": user_message},
+            ensure_ascii=False,
+        )
+        try:
+            system_message = self._llm_provider.construct_prompt(
+                prompt=build_general_semantic_review_prompt(),
+                role=self._llm_provider.enums.SYSTEM.value,
+            )
+            reviewed_content = await asyncio.to_thread(
+                self._llm_provider.generate_text,
+                review_input,
+                chat_history=[system_message],
+                max_tokens=self._max_tokens,
+                temperature=0,
+            )
+            raw_review = json.loads(reviewed_content)
+            review = GeneralSemanticReview.model_validate(raw_review)
+        except Exception:
+            return None
+
+        payload = {
+            "action": review.action.value,
+            "answer": review.answer,
+            "question": review.question,
+            "options": review.options,
+        }
+        try:
+            return SpecialistResponseParser.parse(
+                json.dumps(payload, ensure_ascii=False)
+            )
+        except SpecialistResponseParseError:
             return None
 
     def _build_provider_history(

@@ -10,6 +10,9 @@ class SupervisorClarificationNodeTests(unittest.IsolatedAsyncioTestCase):
             interrupt_id_factory=lambda: "supervisor-interrupt-1"
         )
         state = {
+            "handoff_count": 1,
+            "handoff_reason": "outside_specialist_scope",
+            "visited_agents": [AgentName.GENERAL],
             "supervisor_decision": {
                 "route": "clarification",
                 "reason": "ambiguous_request",
@@ -38,6 +41,9 @@ class SupervisorClarificationNodeTests(unittest.IsolatedAsyncioTestCase):
             update["final_response"]["interrupt_id"],
             "supervisor-interrupt-1",
         )
+        self.assertEqual(update["handoff_count"], 0)
+        self.assertIsNone(update["handoff_reason"])
+        self.assertEqual(update["visited_agents"], [])
 
     async def test_rejects_a_non_clarification_decision(self):
         update = await SupervisorClarificationNode()(

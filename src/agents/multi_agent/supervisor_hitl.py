@@ -35,6 +35,12 @@ def build_supervisor_clarification_update(
         "active_agent": AgentName.SUPERVISOR.value,
         "resume_target": AgentName.SUPERVISOR.value,
         "task_status": TaskStatus.WAITING_FOR_USER.value,
+        # The user's clarification adds new routing information. Any
+        # specialist exclusions belong to the pre-clarification attempt and
+        # must not prevent a valid specialist from being selected again.
+        "handoff_count": 0,
+        "handoff_reason": None,
+        "visited_agents": [],
         "pending_interrupt": {
             **clarification,
             "interrupt_id": interrupt_id,

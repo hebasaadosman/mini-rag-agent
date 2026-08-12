@@ -6,6 +6,7 @@ from .decision_parser import (
     SupervisorDecisionParser,
 )
 from .prompts import build_supervisor_system_prompt
+from .schemas import SupervisorDecision
 from .specialist_schemas import HandoffReason
 from .state import AgentName, MultiAgentState, TaskStatus
 from .supervisor_hitl import (
@@ -58,6 +59,39 @@ class SupervisorAgent:
                 "The supervisor returned an invalid routing decision."
             )
 
+        if self._selects_visited_specialist(decision, state):
+            try:
+                retry_system_message = self._llm_provider.construct_prompt(
+                    prompt=(
+                        f"{self._build_system_prompt(state)}\n\n"
+                        "Your previous decision selected a specialist that "
+                        "is unavailable for this routing attempt. Re-evaluate "
+                        "the request once. Select an untried specialist or "
+                        "ask a routing clarification."
+                    ),
+                    role=self._llm_provider.enums.SYSTEM.value,
+                )
+                retry_content = await asyncio.to_thread(
+                    self._llm_provider.generate_text,
+                    user_message,
+                    chat_history=[retry_system_message],
+                    max_tokens=self._max_tokens,
+                    temperature=self._temperature,
+                )
+                decision = SupervisorDecisionParser.parse(
+                    {"content": retry_content}
+                )
+            except Exception:
+                return self._failure(
+                    "Failed to repair the supervisor routing decision."
+                )
+
+            if self._selects_visited_specialist(decision, state):
+                return self._failure(
+                    "The supervisor repeatedly selected an unavailable "
+                    "specialist."
+                )
+
         return {
             "supervisor_decision": decision.model_dump(mode="json"),
             "active_agent": AgentName.SUPERVISOR.value,
@@ -80,6 +114,9 @@ class SupervisorAgent:
 
         resumed_state = {
             **state,
+            "handoff_count": 0,
+            "handoff_reason": None,
+            "visited_agents": [],
             "user_message": (
                 f"Original request:\n{original_request}\n\n"
                 f"Clarification response:\n{response}"
@@ -93,7 +130,33 @@ class SupervisorAgent:
             "resume_target": None,
             "pending_interrupt": None,
             "pending_user_message": None,
+            "handoff_count": 0,
+            "handoff_reason": None,
+            "visited_agents": [],
         }
+
+    @staticmethod
+    def _selects_visited_specialist(
+        decision: SupervisorDecision,
+        state: MultiAgentState,
+    ) -> bool:
+        target = {
+            "knowledge": AgentName.KNOWLEDGE,
+            "utility": AgentName.UTILITY,
+            "general": AgentName.GENERAL,
+            "email": AgentName.EMAIL,
+        }.get(decision.route.value)
+        if target is None:
+            return False
+
+        raw_visited = state.get("visited_agents") or []
+        if not isinstance(raw_visited, list):
+            return False
+        try:
+            visited = {AgentName(agent) for agent in raw_visited}
+        except (TypeError, ValueError):
+            return False
+        return target in visited
 
     @staticmethod
     def _build_system_prompt(state: MultiAgentState) -> str:

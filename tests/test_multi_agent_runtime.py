@@ -133,6 +133,31 @@ class MultiAgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(dependencies["general_agent"].calls, 1)
         self.assertEqual(utility.resume_calls, 0)
 
+    async def test_supervisor_clarification_reopens_specialist_routing(self):
+        dependencies = _dependencies(
+            ("general", "clarification", "general")
+        )
+        general = _FakeSpecialist("general", mode="handoff")
+        dependencies["general_agent"] = general
+        runtime, _, _ = _runtime(dependencies=dependencies)
+
+        waiting = await runtime.chat(
+            thread_id="runtime-supervisor-retry",
+            message="What is the capital of an unknown place?",
+        )
+        general.mode = "completed"
+        completed = await runtime.resume(
+            thread_id="runtime-supervisor-retry",
+            response="Spain",
+        )
+
+        self.assertEqual(waiting["status"], "clarification_required")
+        self.assertEqual(waiting["agent"], "supervisor")
+        self.assertEqual(completed, {"agent": "general"})
+        self.assertEqual(general.calls, 2)
+        self.assertEqual(dependencies["supervisor"].calls, 2)
+        self.assertEqual(dependencies["supervisor"].resume_calls, 1)
+
     async def test_resume_without_pending_task_is_rejected_safely(self):
         runtime, _, _ = _runtime()
 

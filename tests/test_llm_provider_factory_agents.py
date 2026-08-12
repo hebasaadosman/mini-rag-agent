@@ -34,6 +34,18 @@ class _Provider:
                         "answer": "Good morning!",
                     }
                 ),
+                json.dumps(
+                    {
+                        "entity_types": ["greeting"],
+                        "embedded_assumptions": [],
+                        "relationship_valid": True,
+                        "verdict": "The greeting response is appropriate.",
+                        "action": "answer",
+                        "answer": "Good morning!",
+                        "question": None,
+                        "options": [],
+                    }
+                ),
             ]
         )
 

@@ -46,6 +46,16 @@ class _FakeProvider:
         return self.content
 
 
+class _SequencedProvider(_FakeProvider):
+    def __init__(self, contents):
+        super().__init__()
+        self._contents = iter(contents)
+
+    def generate_text(self, *args, **kwargs):
+        super().generate_text(*args, **kwargs)
+        return next(self._contents)
+
+
 class SupervisorAgentTests(unittest.IsolatedAsyncioTestCase):
     async def test_routes_a_new_request_using_the_llm_decision(self):
         provider = _FakeProvider(
@@ -218,6 +228,42 @@ class SupervisorAgentTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsNone(update["resume_target"])
         self.assertIsNone(update["pending_interrupt"])
+        self.assertEqual(update["visited_agents"], [])
+        self.assertEqual(update["handoff_count"], 0)
+
+    async def test_repairs_a_repeated_specialist_selection_once(self):
+        provider = _SequencedProvider(
+            [
+                json.dumps(
+                    {
+                        "route": "general",
+                        "reason": "general_conversation",
+                        "confidence": 0.7,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "route": "clarification",
+                        "reason": "ambiguous_request",
+                        "confidence": 0.8,
+                        "clarification_question": "Which place?",
+                    }
+                ),
+            ]
+        )
+        agent = SupervisorAgent(llm_provider=provider)
+        state = build_initial_multi_agent_state("What is its capital?")
+        state["visited_agents"] = [AgentName.GENERAL]
+
+        update = await agent(state)
+
+        self.assertEqual(
+            update["supervisor_decision"]["route"],
+            "clarification",
+        )
+        self.assertEqual(len(provider.calls), 2)
+        retry_prompt = provider.calls[1]["chat_history"][0]["content"]
+        self.assertIn("previous decision", retry_prompt)
 
     async def test_resume_rejects_missing_supervisor_clarification(self):
         provider = _FakeProvider("unused")
