@@ -267,6 +267,19 @@ jobs:
             pull \
             fastapi
 
+          echo "Starting isolated application dependencies..."
+
+          docker compose \
+            "${COMPOSE_FILES[@]}" \
+            up \
+            -d \
+            --no-build \
+            --wait \
+            pgvector \
+            qdrant \
+            rabbitmq \
+            redis
+
           echo "Synchronizing the PostgreSQL role password..."
 
           mapfile -t POSTGRES_CREDENTIALS_B64 < <(
@@ -315,12 +328,25 @@ jobs:
               | base64 --decode
           )"
 
+          PGVECTOR_CONTAINER_ID="$(
+            docker compose \
+              "${COMPOSE_FILES[@]}" \
+              ps \
+              -q \
+              pgvector
+          )"
+
+          if [ -z "$PGVECTOR_CONTAINER_ID" ]; then
+            echo "PostgreSQL container was not created."
+            exit 1
+          fi
+
           docker exec \
             --interactive \
             --user postgres \
             --env TARGET_POSTGRES_USER="$TARGET_POSTGRES_USER" \
             --env TARGET_POSTGRES_PASSWORD="$TARGET_POSTGRES_PASSWORD" \
-            pgvector \
+            "$PGVECTOR_CONTAINER_ID" \
             psql \
             --username "$TARGET_POSTGRES_USER" \
             --dbname postgres \
@@ -337,7 +363,7 @@ jobs:
 
           echo "Running Alembic migrations..."
 
-          MIGRATION_CONTAINER="mini-rag-migration-${DEPLOY_SHA:0:12}"
+          MIGRATION_CONTAINER="mini-rag-agent-migration-${DEPLOY_SHA:0:12}"
 
           docker rm \
             -f \
@@ -459,17 +485,6 @@ jobs:
             --no-deps \
             --force-recreate \
             "${APPLICATION_SERVICES[@]}"
-          echo "Recreating Nginx container..."
-
-          docker compose \
-            "${COMPOSE_FILES[@]}" \
-            up \
-            -d \
-            --no-build \
-            --no-deps \
-            --force-recreate \
-            nginx
-
           echo "Waiting for FastAPI container..."
 
           sleep 5
@@ -567,14 +582,15 @@ jobs:
           for attempt in {1..18}; do
             echo "Health check attempt ${attempt}/18..."
 
-            if curl \
+            if ssh "${PROD_USER}@${PROD_HOST}" \
+              "curl \
               --fail \
               --silent \
               --show-error \
               --max-time 10 \
               --connect-timeout 5 \
-              "http://${PROD_HOST}/api/v1/health" \
-              > /dev/null; then
+              http://127.0.0.1:8001/api/v1/health \
+              > /dev/null"; then
 
               echo "Production is healthy."
               exit 0

@@ -1,3 +1,5 @@
+name: mini-rag-agent
+
 services:
   # FastAPI application
   fastapi:

@@ -1,56 +1,63 @@
 services:
   fastapi:
+    container_name: !reset null
     image: ${APP_IMAGE:?APP_IMAGE must be set}
     build: !reset null
     environment:
       APP_ENV: production
-    ports: !override []
+    ports: !override
+      - "127.0.0.1:8001:8000"
     restart: always
 
   celery-file-worker:
+    container_name: !reset null
     image: ${APP_IMAGE:?APP_IMAGE must be set}
     build: !reset null
     restart: always
 
   celery-index-worker:
+    container_name: !reset null
     image: ${APP_IMAGE:?APP_IMAGE must be set}
     build: !reset null
     restart: always
 
   celery-maintenance-worker:
+    container_name: !reset null
     image: ${APP_IMAGE:?APP_IMAGE must be set}
     build: !reset null
     restart: always
 
   celery-beat:
+    container_name: !reset null
     image: ${APP_IMAGE:?APP_IMAGE must be set}
     build: !reset null
     restart: always
 
   flower:
+    container_name: !reset null
     image: ${APP_IMAGE:?APP_IMAGE must be set}
     build: !reset null
-    ports: !override
-      - "127.0.0.1:5555:5555"
+    ports: !override []
     restart: always
 
   pgvector:
-    ports: !override
-      - "127.0.0.1:5432:5432"
+    container_name: !reset null
+    ports: !override []
     restart: always
 
   qdrant:
-    ports: !override
-      - "127.0.0.1:6333:6333"
-      - "127.0.0.1:6334:6334"
+    container_name: !reset null
+    ports: !override []
     restart: always
 
   prometheus:
+    container_name: !reset null
     ports: !override
       - "127.0.0.1:9090:9090"
     restart: always
 
   grafana:
+    container_name: !reset null
     environment:
       GF_SERVER_ROOT_URL: "http://16.170.95.79/grafana/"
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
@@ -59,22 +66,23 @@ services:
     restart: always
 
   node-exporter:
+    container_name: !reset null
     ports: !override
       - "127.0.0.1:9100:9100"
     restart: always
 
   postgres-exporter:
+    container_name: !reset null
     ports: !override
       - "127.0.0.1:9187:9187"
     restart: always
 
   rabbitmq:
-    ports: !override
-      - "127.0.0.1:5672:5672"
-      - "127.0.0.1:15672:15672"
+    container_name: !reset null
+    ports: !override []
     restart: always
 
   redis:
-    ports: !override
-      - "127.0.0.1:6379:6379"
+    container_name: !reset null
+    ports: !override []
     restart: always
