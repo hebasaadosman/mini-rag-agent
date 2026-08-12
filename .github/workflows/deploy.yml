@@ -583,14 +583,21 @@ jobs:
             echo "Health check attempt ${attempt}/18..."
 
             if ssh "${PROD_USER}@${PROD_HOST}" \
-              "curl \
-              --fail \
-              --silent \
-              --show-error \
-              --max-time 10 \
-              --connect-timeout 5 \
-              http://127.0.0.1:8001/api/v1/health \
-              > /dev/null"; then
+              "cd '${PROD_PATH}' && \
+               APP_IMAGE='${APP_IMAGE}' \
+               docker compose \
+                 -f docker/docker-compose.yml \
+                 -f docker/docker-compose.prod.yml \
+                 exec \
+                 -T \
+                 fastapi \
+                 curl \
+                   --fail \
+                   --silent \
+                   --show-error \
+                   --max-time 10 \
+                   http://127.0.0.1:8000/api/v1/health \
+                   > /dev/null"; then
 
               echo "Production is healthy."
               exit 0
