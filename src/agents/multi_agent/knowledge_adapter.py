@@ -23,6 +23,8 @@ class KnowledgeAgentCore(Protocol):
         response: str,
     ) -> dict[str, Any]: ...
 
+    async def clear_memory(self, *, thread_id: str) -> None: ...
+
 
 KnowledgeAgentFactory = Callable[[int], KnowledgeAgentCore]
 
@@ -124,6 +126,19 @@ class KnowledgeSpecialistAdapter:
             result=result,
             input_message=response,
         )
+
+    async def cancel_pending(self, state: MultiAgentState) -> None:
+        """Discard the Knowledge Core checkpoint for an abandoned task."""
+
+        context = self._request_context(state)
+        if isinstance(context, dict):
+            raise ValueError(
+                str(context.get("error") or "Invalid request context.")
+            )
+
+        project_id, thread_id = context
+        agent = self._agent_factory(project_id)
+        await agent.clear_memory(thread_id=thread_id)
 
     def _map_result(
         self,

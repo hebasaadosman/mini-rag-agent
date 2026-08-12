@@ -62,6 +62,54 @@ class ConversationGateTests(unittest.TestCase):
         )
         self.assertIsNone(decision.target)
 
+    def test_switch_confirmation_can_continue_the_pending_task(self):
+        state = self._build_waiting_state(AgentName.UTILITY)
+        state["switch_confirmation_pending"] = True
+        state["pending_switch_message"] = "Say hello instead"
+        state["pending_user_message"] = "continue_current_task"
+
+        decision = ConversationGate.decide(
+            state,
+            ConversationEvent.RESUME,
+        )
+
+        self.assertEqual(
+            decision.route,
+            ConversationRoute.CONTINUE_CURRENT_TASK,
+        )
+
+    def test_switch_confirmation_can_select_the_new_request(self):
+        state = self._build_waiting_state(AgentName.UTILITY)
+        state["switch_confirmation_pending"] = True
+        state["pending_switch_message"] = "Say hello instead"
+        state["pending_user_message"] = "switch_to_new_request"
+
+        decision = ConversationGate.decide(
+            state,
+            ConversationEvent.RESUME,
+        )
+
+        self.assertEqual(
+            decision.route,
+            ConversationRoute.SWITCH_TO_NEW_REQUEST,
+        )
+
+    def test_invalid_switch_decision_requests_confirmation_again(self):
+        state = self._build_waiting_state(AgentName.UTILITY)
+        state["switch_confirmation_pending"] = True
+        state["pending_switch_message"] = "Say hello instead"
+        state["pending_user_message"] = "maybe"
+
+        decision = ConversationGate.decide(
+            state,
+            ConversationEvent.RESUME,
+        )
+
+        self.assertEqual(
+            decision.route,
+            ConversationRoute.REQUEST_SWITCH_CONFIRMATION,
+        )
+
     def test_resume_is_rejected_when_no_task_is_pending(self):
         state = build_initial_multi_agent_state("Continue")
 

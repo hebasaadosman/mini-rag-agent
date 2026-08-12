@@ -687,7 +687,10 @@ class KnowledgeAgentGraph:
         tool_history: list[dict[str, Any]],
     ) -> list[str]:
         for execution in reversed(tool_history):
-            if execution.get("tool_name") != "list_project_assets":
+            if execution.get("tool_name") not in {
+                "list_project_assets",
+                "search_assets_by_name",
+            }:
                 continue
 
             execution_result = execution.get("execution_result") or {}

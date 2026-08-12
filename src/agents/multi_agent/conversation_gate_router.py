@@ -12,6 +12,8 @@ class ConversationGateDestination(str, Enum):
     RESUME_GENERAL = "resume_general"
     RESUME_EMAIL = "resume_email"
     REQUEST_SWITCH_CONFIRMATION = "request_switch_confirmation"
+    CONTINUE_CURRENT_TASK = "continue_current_task"
+    SWITCH_TO_NEW_REQUEST = "switch_to_new_request"
     REJECTION = "rejection"
     FAILURE = "failure"
 
@@ -60,6 +62,20 @@ class ConversationGateRouter:
                 normalized_target,
                 ConversationGateDestination.FAILURE,
             )
+
+        if route is ConversationRoute.CONTINUE_CURRENT_TASK:
+            if reason is not None:
+                return ConversationGateDestination.FAILURE
+            try:
+                AgentName(target)
+            except (TypeError, ValueError):
+                return ConversationGateDestination.FAILURE
+            return ConversationGateDestination.CONTINUE_CURRENT_TASK
+
+        if route is ConversationRoute.SWITCH_TO_NEW_REQUEST:
+            if target is not None or reason is not None:
+                return ConversationGateDestination.FAILURE
+            return ConversationGateDestination.SWITCH_TO_NEW_REQUEST
 
         if route in {
             ConversationRoute.REQUEST_SWITCH_CONFIRMATION,

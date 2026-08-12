@@ -2,10 +2,23 @@ import unittest
 
 from agents.multi_agent import AgentName, TaskStatus
 from agents.multi_agent.nodes import (
+    ContinueCurrentTaskNode,
     FailureNode,
     GateRejectionNode,
     GateSwitchConfirmationNode,
+    SwitchToNewRequestNode,
 )
+
+
+class _CancellableSpecialist:
+    def __init__(self, error=None):
+        self.error = error
+        self.calls = []
+
+    async def cancel_pending(self, state):
+        self.calls.append(state)
+        if self.error is not None:
+            raise self.error
 
 
 class MultiAgentTerminalNodeTests(unittest.IsolatedAsyncioTestCase):
@@ -79,6 +92,58 @@ class MultiAgentTerminalNodeTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("resume_target", update)
         self.assertNotIn("pending_interrupt", update)
         self.assertIs(state["pending_interrupt"], pending_interrupt)
+
+    async def test_continue_current_task_restores_clarification(self):
+        update = await ContinueCurrentTaskNode()(
+            {
+                "resume_target": "utility",
+                "pending_interrupt": {
+                    "type": "clarification",
+                    "question": "Which city?",
+                    "options": [],
+                    "interrupt_id": "utility-1",
+                },
+            }
+        )
+
+        self.assertEqual(
+            update["final_response"]["status"],
+            "clarification_required",
+        )
+        self.assertFalse(update["switch_confirmation_pending"])
+
+    async def test_switch_to_new_request_resets_the_pending_task(self):
+        specialist = _CancellableSpecialist()
+        state = {
+            "pending_switch_message": "Say hello",
+            "resume_target": AgentName.KNOWLEDGE,
+        }
+        update = await SwitchToNewRequestNode(
+            specialists={AgentName.KNOWLEDGE: specialist}
+        )(state)
+
+        self.assertEqual(update["user_message"], "Say hello")
+        self.assertEqual(update["task_status"], TaskStatus.RUNNING)
+        self.assertIsNone(update["pending_interrupt"])
+        self.assertEqual(specialist.calls, [state])
+
+    async def test_switch_fails_safely_when_pending_cleanup_fails(self):
+        specialist = _CancellableSpecialist(RuntimeError("private"))
+
+        update = await SwitchToNewRequestNode(
+            specialists={AgentName.KNOWLEDGE: specialist}
+        )(
+            {
+                "pending_switch_message": "Say hello",
+                "resume_target": AgentName.KNOWLEDGE,
+            }
+        )
+
+        self.assertEqual(update["task_status"], TaskStatus.FAILED)
+        self.assertEqual(
+            update["error"],
+            "Failed to cancel the pending task safely.",
+        )
 
     async def test_invalid_terminal_decisions_fail_safely(self):
         invalid_rejection = await GateRejectionNode()(

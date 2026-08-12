@@ -88,9 +88,14 @@ class GeneralAgent:
         try:
             response = SpecialistResponseParser.parse(content)
         except SpecialistResponseParseError:
-            return self._failure(
-                "The general agent returned an invalid response."
+            response = await self._repair_response(
+                user_message=user_message,
+                chat_history=chat_history,
             )
+            if response is None:
+                return self._failure(
+                    "The general agent returned an invalid response."
+                )
 
         if response.action == SpecialistAction.HANDOFF:
             return build_handoff_update(
@@ -151,6 +156,32 @@ class GeneralAgent:
             },
             "error": None,
         }
+
+    async def _repair_response(
+        self,
+        *,
+        user_message: str,
+        chat_history: list[dict[str, Any]],
+    ):
+        repair_prompt = (
+            "Your previous response did not match the required JSON "
+            "contract. Re-evaluate the original user request below and "
+            "return exactly one valid JSON object using one of the answer, "
+            "clarification, or handoff shapes from the system prompt. Do "
+            "not use Markdown or add commentary.\n\nOriginal user request:\n"
+            f"{user_message}"
+        )
+        try:
+            repaired_content = await asyncio.to_thread(
+                self._llm_provider.generate_text,
+                repair_prompt,
+                chat_history=chat_history,
+                max_tokens=self._max_tokens,
+                temperature=0,
+            )
+            return SpecialistResponseParser.parse(repaired_content)
+        except Exception:
+            return None
 
     def _build_provider_history(
         self,

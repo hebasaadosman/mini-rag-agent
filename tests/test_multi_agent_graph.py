@@ -164,6 +164,8 @@ class MultiAgentGraphTests(unittest.TestCase):
             "resume_general",
             "resume_email",
             "request_switch_confirmation",
+            "continue_current_task",
+            "switch_to_new_request",
             "rejection",
             "failure",
         }
@@ -175,6 +177,8 @@ class MultiAgentGraphTests(unittest.TestCase):
                 (START, "conversation_gate"),
                 ("supervisor_clarification", END),
                 ("request_switch_confirmation", END),
+                ("continue_current_task", END),
+                ("switch_to_new_request", "supervisor"),
                 ("rejection", END),
                 ("failure", END),
             },

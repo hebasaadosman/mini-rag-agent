@@ -49,6 +49,13 @@ class SupervisorPromptTests(unittest.TestCase):
         self.assertIn("EMAIL", SupervisorRoute.__members__)
         self.assertIn("explicit approval before sending", prompt)
 
+    def test_stable_facts_do_not_route_to_utility(self):
+        prompt = build_supervisor_system_prompt()
+
+        self.assertIn("time or current weather", prompt)
+        self.assertIn("stable factual questions", prompt)
+        self.assertIn("capital cities", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

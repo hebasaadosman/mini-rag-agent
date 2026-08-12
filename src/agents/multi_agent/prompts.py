@@ -19,12 +19,16 @@ Choose exactly one route:
    policies, document search, retrieval, comparison, or summarization.
 
 2. "{SupervisorRoute.UTILITY.value}"
-   Use when the request needs current external information or a utility
-   tool, such as weather data.
+   Use only when the request needs a supported live utility tool: current
+   time or current weather for a location. Do not use utility for stable
+   factual questions, geography, capital cities, definitions, or ordinary
+   knowledge that needs no live tool.
 
 3. "{SupervisorRoute.GENERAL.value}"
-   Use for greetings, ordinary conversation, or general explanations
-   that need neither project documents nor an external utility tool.
+   Use for greetings, ordinary conversation, stable factual questions,
+   or general explanations that need neither project documents nor a
+   supported live utility tool. This includes definitions, technical
+   concepts, geography, and capital cities.
 
 4. "{SupervisorRoute.EMAIL.value}"
    Use when the user wants to draft, prepare, review, or send an email.

@@ -19,13 +19,16 @@ class _FakeKnowledgeAgent:
         resume_result=None,
         run_error=None,
         resume_error=None,
+        clear_error=None,
     ):
         self.run_result = run_result
         self.resume_result = resume_result
         self.run_error = run_error
         self.resume_error = resume_error
+        self.clear_error = clear_error
         self.run_calls = []
         self.resume_calls = []
+        self.clear_calls = []
 
     async def run(self, **kwargs):
         self.run_calls.append(kwargs)
@@ -38,6 +41,11 @@ class _FakeKnowledgeAgent:
         if self.resume_error is not None:
             raise self.resume_error
         return self.resume_result
+
+    async def clear_memory(self, **kwargs):
+        self.clear_calls.append(kwargs)
+        if self.clear_error is not None:
+            raise self.clear_error
 
 
 class _Factory:
@@ -262,6 +270,19 @@ class KnowledgeSpecialistAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             update["pending_interrupt"]["interrupt_id"],
             "same-interrupt",
+        )
+
+    async def test_cancel_pending_clears_the_scoped_core_checkpoint(self):
+        core = _FakeKnowledgeAgent()
+        factory = _Factory(core)
+        adapter = KnowledgeSpecialistAdapter(agent_factory=factory)
+
+        await adapter.cancel_pending(_state())
+
+        self.assertEqual(factory.project_ids, [7])
+        self.assertEqual(
+            core.clear_calls,
+            [{"thread_id": "knowledge-thread-1"}],
         )
 
     async def test_resume_requires_a_knowledge_pending_state(self):

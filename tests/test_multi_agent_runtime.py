@@ -85,6 +85,54 @@ class MultiAgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(utility.calls, 1)
         self.assertEqual(dependencies["email_agent"].calls, 0)
 
+    async def test_continue_switch_decision_restores_the_old_prompt(self):
+        dependencies = _dependencies("utility")
+        utility = _FakeSpecialist("utility", mode="waiting")
+        dependencies["utility_agent"] = utility
+        runtime, _, _ = _runtime(dependencies=dependencies)
+
+        await runtime.chat(
+            thread_id="runtime-switch-continue",
+            message="Weather",
+        )
+        await runtime.chat(
+            thread_id="runtime-switch-continue",
+            message="Say hello instead",
+        )
+        result = await runtime.resume(
+            thread_id="runtime-switch-continue",
+            response="continue_current_task",
+        )
+
+        self.assertEqual(result["status"], "clarification_required")
+        self.assertEqual(result["agent"], "utility")
+        self.assertEqual(utility.resume_calls, 0)
+        self.assertEqual(dependencies["supervisor"].calls, 1)
+
+    async def test_switch_decision_runs_the_saved_new_request(self):
+        dependencies = _dependencies(("utility", "general"))
+        utility = _FakeSpecialist("utility", mode="waiting")
+        dependencies["utility_agent"] = utility
+        runtime, _, _ = _runtime(dependencies=dependencies)
+
+        await runtime.chat(
+            thread_id="runtime-switch-new",
+            message="Weather",
+        )
+        await runtime.chat(
+            thread_id="runtime-switch-new",
+            message="Say hello instead",
+        )
+        result = await runtime.resume(
+            thread_id="runtime-switch-new",
+            response="switch_to_new_request",
+        )
+
+        self.assertEqual(result, {"agent": "general"})
+        self.assertEqual(dependencies["supervisor"].calls, 2)
+        self.assertEqual(dependencies["general_agent"].calls, 1)
+        self.assertEqual(utility.resume_calls, 0)
+
     async def test_resume_without_pending_task_is_rejected_safely(self):
         runtime, _, _ = _runtime()
 

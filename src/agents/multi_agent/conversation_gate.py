@@ -13,6 +13,8 @@ class ConversationRoute(str, Enum):
     SUPERVISOR = "supervisor"
     RESUME_TARGET = "resume_target"
     REQUEST_SWITCH_CONFIRMATION = "request_switch_confirmation"
+    CONTINUE_CURRENT_TASK = "continue_current_task"
+    SWITCH_TO_NEW_REQUEST = "switch_to_new_request"
     REJECT = "reject"
 
 
@@ -57,6 +59,32 @@ class ConversationGate:
 
         if is_waiting:
             resume_target = ConversationGate._validate_pending_task(state)
+
+            if (
+                normalized_event == ConversationEvent.RESUME
+                and state.get("switch_confirmation_pending") is True
+            ):
+                switch_decision = str(
+                    state.get("pending_user_message") or ""
+                ).strip().casefold()
+                if switch_decision == "continue_current_task":
+                    return ConversationGateDecision(
+                        route=ConversationRoute.CONTINUE_CURRENT_TASK,
+                        target=resume_target,
+                    )
+                if switch_decision == "switch_to_new_request":
+                    return ConversationGateDecision(
+                        route=ConversationRoute.SWITCH_TO_NEW_REQUEST,
+                    )
+                return ConversationGateDecision(
+                    route=(
+                        ConversationRoute.REQUEST_SWITCH_CONFIRMATION
+                    ),
+                    reason=(
+                        "Choose continue_current_task or "
+                        "switch_to_new_request."
+                    ),
+                )
 
             if normalized_event == ConversationEvent.RESUME:
                 return ConversationGateDecision(

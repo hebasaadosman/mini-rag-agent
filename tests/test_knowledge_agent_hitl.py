@@ -278,6 +278,25 @@ class KnowledgeAgentHITLTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(selected, ["a.pdf", "b.pdf"])
 
+    def test_search_asset_matches_become_real_clarification_options(self):
+        options = RequestClarificationNode._asset_options_from_history(
+            [
+                {
+                    "tool_name": "search_assets_by_name",
+                    "execution_result": {
+                        "result": {
+                            "assets": [
+                                {"asset_name": "first.pdf"},
+                                {"asset_name": "second.pdf"},
+                            ]
+                        }
+                    },
+                }
+            ]
+        )
+
+        self.assertEqual(options, ["first.pdf", "second.pdf"])
+
     async def test_structured_clarification_pauses_and_resumes(self):
         registry = ToolRegistry()
         registry.register_tool(RequestClarificationTool())

@@ -95,6 +95,12 @@ class GateSwitchConfirmationNode:
             ],
         }
         return {
+            "switch_confirmation_pending": True,
+            "pending_switch_message": (
+                state.get("pending_switch_message")
+                or state.get("user_message")
+            ),
+            "pending_user_message": None,
             "final_response": {
                 "success": True,
                 "status": "switch_confirmation_required",
@@ -104,6 +110,128 @@ class GateSwitchConfirmationNode:
                 "reason": reason,
                 "error": None,
             },
+            "error": None,
+        }
+
+
+class ContinueCurrentTaskNode:
+    """Restore the original pending prompt after switch confirmation."""
+
+    async def __call__(self, state: MultiAgentState) -> dict[str, Any]:
+        try:
+            waiting_agent = AgentName(state.get("resume_target"))
+        except (TypeError, ValueError):
+            return FailureNode.build_update(
+                "The pending task cannot be identified."
+            )
+
+        pending = state.get("pending_interrupt")
+        if not isinstance(pending, dict):
+            return FailureNode.build_update(
+                "The pending task cannot be identified."
+            )
+
+        interrupt_type = pending.get("type")
+        if interrupt_type == "email_approval":
+            approval = {
+                key: value
+                for key, value in pending.items()
+                if key != "draft"
+            }
+            final_response = {
+                "success": True,
+                "status": "approval_required",
+                "agent": waiting_agent.value,
+                "answer": None,
+                "approval": approval,
+                "draft": pending.get("draft"),
+                "error": None,
+            }
+        elif interrupt_type in {
+            "clarification",
+            "routing_clarification",
+        }:
+            clarification = {
+                "type": interrupt_type,
+                "question": pending.get("question"),
+                "options": pending.get("options") or [],
+            }
+            final_response = {
+                "success": True,
+                "status": "clarification_required",
+                "agent": waiting_agent.value,
+                "answer": None,
+                "clarification": clarification,
+                "interrupt_id": pending.get("interrupt_id"),
+                "error": None,
+            }
+        else:
+            return FailureNode.build_update(
+                "The pending task type is invalid."
+            )
+
+        return {
+            "switch_confirmation_pending": False,
+            "pending_switch_message": None,
+            "pending_user_message": None,
+            "gate_decision": None,
+            "final_response": final_response,
+            "error": None,
+        }
+
+
+class SwitchToNewRequestNode:
+    """Cancel the pending task and send the saved request to supervisor."""
+
+    def __init__(
+        self,
+        *,
+        specialists: dict[AgentName, Any] | None = None,
+    ) -> None:
+        self._specialists = dict(specialists or {})
+
+    async def __call__(self, state: MultiAgentState) -> dict[str, Any]:
+        new_message = str(
+            state.get("pending_switch_message") or ""
+        ).strip()
+        if not new_message:
+            return FailureNode.build_update(
+                "The new request to switch to is missing."
+            )
+
+        try:
+            pending_agent = AgentName(state.get("resume_target"))
+        except (TypeError, ValueError):
+            return FailureNode.build_update(
+                "The pending task target is invalid."
+            )
+
+        specialist = self._specialists.get(pending_agent)
+        cancel_pending = getattr(specialist, "cancel_pending", None)
+        if callable(cancel_pending):
+            try:
+                await cancel_pending(state)
+            except Exception:
+                return FailureNode.build_update(
+                    "Failed to cancel the pending task safely."
+                )
+
+        return {
+            "conversation_event": "new_message",
+            "gate_decision": None,
+            "user_message": new_message,
+            "supervisor_decision": None,
+            "active_agent": None,
+            "resume_target": None,
+            "task_status": TaskStatus.RUNNING.value,
+            "pending_interrupt": None,
+            "pending_user_message": None,
+            "switch_confirmation_pending": False,
+            "pending_switch_message": None,
+            "handoff_count": 0,
+            "handoff_reason": None,
+            "visited_agents": [],
+            "final_response": None,
             "error": None,
         }
 

@@ -6,6 +6,7 @@ from agents.multi_agent import (
     AgentName,
     GeneralAgent,
     TaskStatus,
+    build_general_agent_system_prompt,
     build_initial_multi_agent_state,
 )
 
@@ -50,6 +51,16 @@ class _FakeProvider:
         if self.error is not None:
             raise self.error
         return self.answer
+
+
+class _SequencedProvider(_FakeProvider):
+    def __init__(self, answers):
+        super().__init__()
+        self._answers = iter(answers)
+
+    def generate_text(self, *args, **kwargs):
+        super().generate_text(*args, **kwargs)
+        return next(self._answers)
 
 
 class GeneralAgentTests(unittest.IsolatedAsyncioTestCase):
@@ -220,6 +231,39 @@ class GeneralAgentTests(unittest.IsolatedAsyncioTestCase):
             update["error"],
             "The general agent returned an invalid response.",
         )
+
+    async def test_repairs_one_invalid_structured_response(self):
+        provider = _SequencedProvider(
+            [
+                "أهلًا يا هبة، سأتحدث معك بالعربية.",
+                json.dumps(
+                    {
+                        "action": "answer",
+                        "answer": "أهلًا يا هبة، سأتحدث معك بالعربية.",
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+        )
+        agent = GeneralAgent(llm_provider=provider)
+
+        update = await agent(
+            build_initial_multi_agent_state(
+                "أنا هبة وأتكلم العربية والمصرية."
+            )
+        )
+
+        self.assertEqual(update["task_status"], TaskStatus.COMPLETED)
+        self.assertEqual(update["final_response"]["agent"], "general")
+        self.assertEqual(len(provider.calls), 2)
+        self.assertIn("did not match", provider.calls[1]["prompt"])
+
+    def test_prompt_establishes_the_ai_rag_context(self):
+        prompt = build_general_agent_system_prompt()
+
+        self.assertIn("AI project knowledge assistant", prompt)
+        self.assertIn("Retrieval-Augmented Generation", prompt)
+        self.assertIn("false premise", prompt)
 
     async def test_out_of_scope_request_returns_a_handoff(self):
         provider = _FakeProvider(

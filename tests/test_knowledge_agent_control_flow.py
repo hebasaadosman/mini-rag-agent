@@ -102,6 +102,32 @@ class KnowledgeAgentControlFlowTests(unittest.TestCase):
                 },
                 "clarify",
             ),
+            (
+                {
+                    "model_response": {
+                        "content": (
+                            '{"response_type":"answer","answer":'
+                            '"Matches: first.pdf and second.pdf. Which one?",'
+                            '"used_chunk_ids":[]}'
+                        ),
+                        "tool_calls": [],
+                    },
+                    "tool_history": [
+                        {
+                            "tool_name": "search_assets_by_name",
+                            "execution_result": {
+                                "result": {
+                                    "assets": [
+                                        {"asset_name": "first.pdf"},
+                                        {"asset_name": "second.pdf"},
+                                    ]
+                                }
+                            },
+                        }
+                    ],
+                },
+                "clarify",
+            ),
         ]
 
         for state, expected_route in cases:

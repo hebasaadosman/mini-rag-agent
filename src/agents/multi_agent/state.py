@@ -36,6 +36,8 @@ class MultiAgentState(TypedDict, total=False):
     task_status: str
     pending_interrupt: dict[str, Any] | None
     pending_user_message: str | None
+    switch_confirmation_pending: bool
+    pending_switch_message: str | None
 
     handoff_count: int
     handoff_reason: str | None
@@ -82,6 +84,8 @@ def build_initial_multi_agent_state(
         "task_status": TaskStatus.RUNNING.value,
         "pending_interrupt": None,
         "pending_user_message": None,
+        "switch_confirmation_pending": False,
+        "pending_switch_message": None,
         "handoff_count": 0,
         "handoff_reason": None,
         "visited_agents": [],

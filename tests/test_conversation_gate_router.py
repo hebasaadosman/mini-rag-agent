@@ -63,6 +63,23 @@ class ConversationGateRouterTests(unittest.TestCase):
             ConversationGateDestination.REJECTION,
         )
 
+    def test_switch_decisions_have_separate_destinations(self):
+        continue_current = ConversationGateRouter.route(
+            _state("continue_current_task", target="utility")
+        )
+        switch_new = ConversationGateRouter.route(
+            _state("switch_to_new_request")
+        )
+
+        self.assertEqual(
+            continue_current,
+            ConversationGateDestination.CONTINUE_CURRENT_TASK,
+        )
+        self.assertEqual(
+            switch_new,
+            ConversationGateDestination.SWITCH_TO_NEW_REQUEST,
+        )
+
     def test_existing_error_routes_to_failure(self):
         state = _state("supervisor")
         state["error"] = "failed"

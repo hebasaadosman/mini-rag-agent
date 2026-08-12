@@ -8,11 +8,13 @@ from .conversation_gate_router import (
     ConversationGateRouter,
 )
 from .nodes import (
+    ContinueCurrentTaskNode,
     ConversationGateNode,
     FailureNode,
     GateRejectionNode,
     GateSwitchConfirmationNode,
     SupervisorClarificationNode,
+    SwitchToNewRequestNode,
 )
 from .specialist_result_router import (
     SpecialistResultDestination,
@@ -61,6 +63,15 @@ class MultiAgentGraph:
         self._checkpointer = checkpointer
         self._conversation_gate_node = ConversationGateNode()
         self._switch_confirmation_node = GateSwitchConfirmationNode()
+        self._continue_current_task_node = ContinueCurrentTaskNode()
+        self._switch_to_new_request_node = SwitchToNewRequestNode(
+            specialists={
+                AgentName.KNOWLEDGE: self._knowledge_agent,
+                AgentName.UTILITY: self._utility_agent,
+                AgentName.GENERAL: self._general_agent,
+                AgentName.EMAIL: self._email_agent,
+            }
+        )
         self._rejection_node = GateRejectionNode()
         self._failure_node = FailureNode()
         self._supervisor_clarification_node = SupervisorClarificationNode()
@@ -113,6 +124,12 @@ class MultiAgentGraph:
                 ConversationGateDestination.REQUEST_SWITCH_CONFIRMATION: (
                     "request_switch_confirmation"
                 ),
+                ConversationGateDestination.CONTINUE_CURRENT_TASK: (
+                    "continue_current_task"
+                ),
+                ConversationGateDestination.SWITCH_TO_NEW_REQUEST: (
+                    "switch_to_new_request"
+                ),
                 ConversationGateDestination.REJECTION: "rejection",
                 ConversationGateDestination.FAILURE: "failure",
             },
@@ -162,10 +179,12 @@ class MultiAgentGraph:
         for terminal_node in (
             "supervisor_clarification",
             "request_switch_confirmation",
+            "continue_current_task",
             "rejection",
             "failure",
         ):
             builder.add_edge(terminal_node, END)
+        builder.add_edge("switch_to_new_request", "supervisor")
         return builder
 
     @staticmethod
@@ -258,6 +277,14 @@ class MultiAgentGraph:
         builder.add_node(
             "request_switch_confirmation",
             self._switch_confirmation_node,
+        )
+        builder.add_node(
+            "continue_current_task",
+            self._continue_current_task_node,
+        )
+        builder.add_node(
+            "switch_to_new_request",
+            self._switch_to_new_request_node,
         )
         builder.add_node(
             "rejection",
