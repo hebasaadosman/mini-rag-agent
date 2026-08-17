@@ -4,8 +4,9 @@ from controllers import MultiAgentController
 
 
 class _Runtime:
-    def __init__(self, *, error=None):
+    def __init__(self, *, error=None, result=None):
         self.error = error
+        self.result = result
         self.chat_calls = []
         self.resume_calls = []
 
@@ -13,6 +14,8 @@ class _Runtime:
         self.chat_calls.append(kwargs)
         if self.error is not None:
             raise self.error
+        if self.result is not None:
+            return self.result
         return {
             "success": True,
             "status": "completed",
@@ -24,6 +27,8 @@ class _Runtime:
         self.resume_calls.append(kwargs)
         if self.error is not None:
             raise self.error
+        if self.result is not None:
+            return self.result
         return {
             "success": True,
             "status": "completed",
@@ -130,6 +135,33 @@ class MultiAgentControllerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(result.success)
         self.assertNotIn("database secret", result.error)
+
+    async def test_contradictory_workflow_response_is_not_exposed(self):
+        controller = MultiAgentController(
+            runtime=_Runtime(
+                result={
+                    "success": True,
+                    "status": "completed",
+                    "agent": "general",
+                    "answer": None,
+                    "error": None,
+                }
+            ),
+            project_model=_ProjectModel(),
+        )
+
+        result = await controller.chat(
+            project_id=1,
+            thread_id="thread-invalid-output",
+            message="Hello",
+        )
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(
+            result.error,
+            "The Multi-Agent workflow returned an invalid response.",
+        )
 
 
 if __name__ == "__main__":
