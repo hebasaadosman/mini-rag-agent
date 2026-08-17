@@ -66,6 +66,15 @@ class Settings(BaseSettings):
 
     AGENT_MEMORY_MAX_MESSAGES: int = 40
 
+    # Authentication is opt-in while the project is migrated endpoint by
+    # endpoint. Production must set AUTH_ENABLED=true and a strong secret.
+    AUTH_ENABLED: bool = False
+    AUTH_JWT_SECRET: Optional[str] = None
+    AUTH_JWT_ALGORITHM: str = "HS256"
+    AUTH_JWT_ISSUER: str = "mini-rag-agent"
+    AUTH_JWT_AUDIENCE: str = "mini-rag-agent-api"
+    AUTH_JWT_LEEWAY_SECONDS: int = 30
+
     # Outbound email. Credentials are consumed only by the SMTP adapter and
     # are never placed in agent state, prompts, or tool-call arguments.
     SMTP_ENABLED: bool = False

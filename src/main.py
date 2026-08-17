@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from models.ChunkModel import ChunkModel
 from observability.langsmith import configure_langsmith
-from routes import base,data,nlp,workflow
+from routes import auth, base,data,nlp,workflow
 from helpers.config import get_settings, Settings
 from stores.llm.LLMProviderFactory import LLMProviderFactory
 from stores.vectordb.VectorDBProviderFactory import VectorDBProviderFactory
@@ -128,6 +128,7 @@ async def shutdown_db_client():
 
 
 app.include_router(base.base_router)
+app.include_router(auth.auth_router)
 app.include_router(data.data_router)
 app.include_router(nlp.nlp_router)
 app.include_router(workflow.workflow_router)
