@@ -14,7 +14,9 @@ from controllers import KnowledgeAgentController, MultiAgentController
 from models.AssetModel import AssetModel
 from models.ProjectModel import ProjectModel
 from models.ProjectMembershipModel import ProjectMembershipModel
+from models.AuditEventModel import AuditEventModel
 from authorization import ProjectAuthorizer
+from auditing.audit_logger import DatabaseAuditLogger
 from routes import agents
 from agents.knowledge_agent.tools_service import (
     KnowledgeAgentToolsService,
@@ -61,6 +63,10 @@ async def startup_db_client():
     app.project_membership_model = await ProjectMembershipModel.create_instance(
         db_client=app.db_client,
     )
+    audit_event_model = await AuditEventModel.create_instance(
+        db_client=app.db_client,
+    )
+    app.audit_logger = DatabaseAuditLogger(audit_event_model)
     app.project_authorizer = ProjectAuthorizer(
         app.project_membership_model
     )

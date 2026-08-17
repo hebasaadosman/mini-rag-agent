@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from authentication import CurrentPrincipal
 from authentication.dependencies import get_current_principal
+from auditing import AuditAction, AuditOutcome, create_audit_event
 from authorization import ProjectAccess, ProjectPermission, ProjectRole
 from authorization.dependencies import require_project_permission
 from models.db_schemes.mini_rag.schemes import Project
@@ -48,6 +49,15 @@ async def create_project(
         principal_id=principal.subject,
         role=ProjectRole.ADMIN.value,
     )
+    await request.app.audit_logger.record(
+        create_audit_event(
+            principal_id=principal.subject,
+            project_id=project.project_id,
+            action=AuditAction.PROJECT_CREATED,
+            outcome=AuditOutcome.SUCCEEDED,
+            metadata={"role": ProjectRole.ADMIN.value},
+        )
+    )
     return ProjectResponse(project_id=project.project_id, role=ProjectRole.ADMIN)
 
 
@@ -59,7 +69,7 @@ async def grant_project_role(
     request: Request,
     project_id: int,
     payload: GrantProjectRoleRequest,
-    _: Annotated[
+    access: Annotated[
         ProjectAccess,
         Depends(require_project_permission(ProjectPermission.MANAGE)),
     ],
@@ -69,5 +79,17 @@ async def grant_project_role(
         project_id=project_id,
         principal_id=payload.principal_id.strip(),
         role=payload.role.value,
+    )
+    await request.app.audit_logger.record(
+        create_audit_event(
+            principal_id=access.principal_id,
+            project_id=project_id,
+            action=AuditAction.PROJECT_MEMBER_ROLE_GRANTED,
+            outcome=AuditOutcome.SUCCEEDED,
+            metadata={
+                "role": payload.role.value,
+                "target_principal_id": payload.principal_id.strip(),
+            },
+        )
     )
     return ProjectResponse(project_id=project_id, role=payload.role)
