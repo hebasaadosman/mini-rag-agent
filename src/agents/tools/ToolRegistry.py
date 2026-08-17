@@ -1,11 +1,21 @@
 from typing import Any
 
 from .BaseTool import BaseTool
+from .ToolExecutionGuard import (
+    ToolExecutionContext,
+    ToolExecutionDenied,
+    ToolExecutionGuard,
+)
 
 
 class ToolRegistry:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        execution_guard: ToolExecutionGuard | None = None,
+    ) -> None:
         self._tools: dict[str, BaseTool] = {}
+        self._execution_guard = execution_guard
 
     def register_tool(
         self,
@@ -49,10 +59,17 @@ class ToolRegistry:
         *,
         name: str,
         arguments: dict[str, Any],
+        context: ToolExecutionContext | None = None,
     ) -> dict[str, Any]:
         tool = self.get_tool(name)
 
         try:
+            if self._execution_guard is not None:
+                self._execution_guard.authorize(
+                    tool_name=name,
+                    arguments=arguments,
+                    context=context,
+                )
             result = await tool.execute(
                 **arguments
             )
@@ -73,6 +90,14 @@ class ToolRegistry:
                     "Invalid arguments supplied to the tool: "
                     f"{exc}"
                 ),
+            }
+
+        except ToolExecutionDenied as exc:
+            return {
+                "success": False,
+                "tool_name": name,
+                "result": None,
+                "error": f"Tool execution blocked: {exc}",
             }
 
         except Exception as exc:
