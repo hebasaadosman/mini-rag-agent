@@ -759,9 +759,23 @@ The six `PROD_ENV_*` secrets are multiline secrets. Copy the entire correspondin
 - Use only the `.example` files as committed configuration templates.
 - Rotate a credential immediately if it has ever appeared in Git history, logs, screenshots, or an image layer.
 - Disable or protect `/api/v1/agents/debug/*` outside trusted development environments.
-- Put the API behind authentication, authorization, TLS, and rate limiting before public deployment.
+- Put the API behind TLS and rate limiting before public deployment.
 - Treat uploaded documents and model outputs as untrusted input.
 - Review Nginx, Grafana, RabbitMQ, Redis, PostgreSQL, and Flower credentials before every deployment.
+
+### Authentication, authorization, and audit rollout
+
+The application now includes an opt-in JWT authentication foundation, project-level RBAC, an append-only audit trail, server-side tool allowlists, and multi-agent output validation. They are intentionally disabled in the committed example configuration so existing local Swagger workflows remain compatible.
+
+Before enabling them in a protected environment:
+
+1. Run `alembic upgrade head` to create `project_memberships` and `audit_events`.
+2. Set `AUTH_ENABLED=true` and `AUTHZ_ENABLED=true` in the private environment file.
+3. Configure a strong `AUTH_JWT_SECRET`, issuer, and audience that match the approved identity provider.
+4. Provision project memberships. The authenticated creator of a new project becomes its `admin`; `viewer`, `contributor`, and `admin` are the supported project roles.
+5. Verify that unauthorized requests receive `403`, and that allowed/denied project access decisions appear in `audit_events` without request content, documents, prompts, or secrets.
+
+`thread_id` is conversation state, not an authorization credential. Project authorization is evaluated before a protected route reaches retrieval, tools, or checkpoints. Retrieval is also physically scoped to a project-specific vector collection.
 
 Please report security issues privately to the repository owner rather than opening a public issue containing sensitive details.
 
@@ -771,8 +785,7 @@ Please report security issues privately to the repository owner rather than open
 - Semantic caching for repeated questions and approved FAQ answers.
 - Summarized and long-term user memory with explicit privacy controls.
 - Background evaluation jobs and quality dashboards.
-- Multi-agent orchestration for specialized retrieval and review tasks.
-- API authentication, project ownership, authorization, and rate limiting.
+- Rate limiting and API gateway protections for public deployment.
 - Expanded integration, load, failure-recovery, and security tests.
 
 ## Contributing
