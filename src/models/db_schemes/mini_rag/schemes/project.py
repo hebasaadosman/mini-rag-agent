@@ -19,3 +19,9 @@ class Project(SQLAlchemyBase):
 
     chunks = relationship("DataChunk", back_populates="project")
     assets = relationship("Asset", back_populates="project")
+    memberships = relationship(
+        "ProjectMembership",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    audit_events = relationship("AuditEvent", back_populates="project")

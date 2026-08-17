@@ -1,4 +1,6 @@
 
+from typing import Annotated
+
 from fastapi import FastAPI,Request, APIRouter,Depends,UploadFile,status,Request
 from fastapi.responses import JSONResponse
 import aiofiles
@@ -15,6 +17,8 @@ from models.AssetModel import AssetModel
 from models.enums import AssetTypeEnum
 from controllers import NLPController
 from tasks.file_processing import process_project_files
+from authorization import ProjectAccess, ProjectPermission
+from authorization.dependencies import require_project_permission
 
 logger = logging.getLogger("uvicorn.error")
 data_controller = DataController()
@@ -23,12 +27,26 @@ data_router = APIRouter(
     tags=["data"],
 )
 
+ProjectWriteAccess = Annotated[
+    ProjectAccess,
+    Depends(require_project_permission(ProjectPermission.WRITE)),
+]
+
 @data_router.post("/upload/{project_id}")
 
-async def upload_data(request: Request, project_id: int, file: UploadFile, app_settings: Settings = Depends(get_settings)):
+async def upload_data(request: Request, project_id: int, file: UploadFile, app_settings: Settings = Depends(get_settings), access: ProjectWriteAccess = None):
 
     project_model = await ProjectModel.create_instance(request.app.db_client) 
-    project = await project_model.get_project_or_create_one(project_id=project_id)
+    project = (
+        await project_model.get_project_by_id(project_id)
+        if access and access.enforced
+        else await project_model.get_project_or_create_one(project_id=project_id)
+    )
+    if project is None:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"signal": "PROJECT_NOT_FOUND"},
+        )
     is_valid, signal = await data_controller.validate_uploaded_file(file)
     if not is_valid:
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"signal": signal})
@@ -66,7 +84,7 @@ async def upload_data(request: Request, project_id: int, file: UploadFile, app_s
 
 
 @data_router.post("/process/{project_id}")
-async def process_endpoint(request: Request, project_id: int, process_request: ProcessRequest, app_settings: Settings = Depends(get_settings)):
+async def process_endpoint(request: Request, project_id: int, process_request: ProcessRequest, app_settings: Settings = Depends(get_settings), _: ProjectWriteAccess = None):
    chunk_size = process_request.chunk_size
    overlap_size = process_request.overlap_size
    do_reset = process_request.do_reset

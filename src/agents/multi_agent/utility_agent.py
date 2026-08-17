@@ -4,6 +4,7 @@ from json import JSONDecodeError
 from typing import Any
 
 from agents.tools import (
+    AllowlistToolExecutionGuard,
     GetCurrentTimeTool,
     GetCurrentWeatherTool,
     OpenMeteoClient,
@@ -31,7 +32,14 @@ def build_utility_tool_registry(
     open_meteo_client: OpenMeteoClient | None = None,
 ) -> ToolRegistry:
     client = open_meteo_client or OpenMeteoClient()
-    registry = ToolRegistry()
+    registry = ToolRegistry(
+        execution_guard=AllowlistToolExecutionGuard(
+            allowed_tools={
+                "get_current_time",
+                "get_current_weather",
+            },
+        )
+    )
     registry.register_tool(GetCurrentTimeTool(client))
     registry.register_tool(GetCurrentWeatherTool(client))
     return registry

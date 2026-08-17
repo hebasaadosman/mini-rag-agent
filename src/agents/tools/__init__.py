@@ -8,6 +8,12 @@ from .OpenMeteoClient import (
     describe_wmo_weather_code,
 )
 from .SendEmailTool import EmailDeliveryGateway, SendEmailTool
+from .ToolExecutionGuard import (
+    AllowlistToolExecutionGuard,
+    ToolExecutionContext,
+    ToolExecutionDenied,
+    ToolExecutionGuard,
+)
 from .ToolRegistry import ToolRegistry
 
 
@@ -77,4 +83,8 @@ __all__ = [
     "describe_wmo_weather_code",
     "EmailDeliveryGateway",
     "SendEmailTool",
+    "AllowlistToolExecutionGuard",
+    "ToolExecutionContext",
+    "ToolExecutionDenied",
+    "ToolExecutionGuard",
 ]

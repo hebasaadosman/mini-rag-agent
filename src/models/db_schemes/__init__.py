@@ -1,1 +1,8 @@
-from .mini_rag.schemes import Asset, DataChunk, RetrieveDocument, Project
+from .mini_rag.schemes import (
+    AuditEvent,
+    Asset,
+    DataChunk,
+    Project,
+    ProjectMembership,
+    RetrieveDocument,
+)
