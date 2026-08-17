@@ -39,6 +39,14 @@ async def get_current_principal(
     """Return a trusted identity or reject the request before business logic."""
     if not settings.AUTH_ENABLED:
         raise _authentication_unavailable()
+    return authenticate_bearer_credentials(credentials, settings)
+
+
+def authenticate_bearer_credentials(
+    credentials: HTTPAuthorizationCredentials | None,
+    settings: Settings,
+) -> CurrentPrincipal:
+    """Verify credentials for dependencies that need conditional AuthZ."""
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise _unauthorized()
 

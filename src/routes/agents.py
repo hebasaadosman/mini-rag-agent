@@ -1,9 +1,11 @@
 from fastapi import (
     APIRouter,
+    Depends,
     Query,
     Request,
     status,
 )
+from typing import Annotated
 from fastapi.responses import StreamingResponse
 
 from agents.knowledge_agent.schemas import (
@@ -20,12 +22,23 @@ from agents.multi_agent.api_schemas import (
 )
 from controllers import KnowledgeAgentController
 from models.ProjectModel import ProjectModel
+from authorization import ProjectAccess, ProjectPermission
+from authorization.dependencies import require_project_permission
 
 
 agents_router = APIRouter(
     prefix="/api/v1/agents",
     tags=["agents"],
 )
+
+ProjectReadAccess = Annotated[
+    ProjectAccess,
+    Depends(require_project_permission(ProjectPermission.READ)),
+]
+ProjectWriteAccess = Annotated[
+    ProjectAccess,
+    Depends(require_project_permission(ProjectPermission.WRITE)),
+]
 
 
 @agents_router.post(
@@ -38,6 +51,7 @@ async def chat_with_multi_agent(
     request: Request,
     project_id: int,
     payload: MultiAgentChatRequest,
+    _: ProjectReadAccess,
 ):
     lock_key = (
         f"multi-agent:{project_id}:{payload.thread_id}"
@@ -60,6 +74,7 @@ async def resume_multi_agent_chat(
     request: Request,
     project_id: int,
     payload: MultiAgentResumeRequest,
+    _: ProjectReadAccess,
 ):
     lock_key = (
         f"multi-agent:{project_id}:{payload.thread_id}"
@@ -81,6 +96,7 @@ async def chat_with_knowledge_agent(
     request: Request,
     project_id: int,
     payload: KnowledgeAgentRequest,
+    _: ProjectReadAccess,
 ):
     project_model = (
         await ProjectModel.create_instance(
@@ -129,6 +145,7 @@ async def stream_knowledge_agent_chat(
     request: Request,
     project_id: int,
     payload: KnowledgeAgentRequest,
+    _: ProjectReadAccess,
 ):
     project_model = await ProjectModel.create_instance(
         db_client=request.app.db_client,
@@ -176,6 +193,7 @@ async def debug_list_project_assets(
     asset_type: str | None = Query(
         default=None,
     ),
+    _: ProjectReadAccess = None,
 ):
     tools_service = (
         request.app
@@ -200,6 +218,7 @@ async def debug_search_project_chunks(
         ge=1,
         le=20,
     ),
+    _: ProjectReadAccess = None,
 ):
     tools_service = (
         request.app
@@ -222,6 +241,7 @@ async def resume_knowledge_agent(
     request: Request,
     project_id: int,
     payload: KnowledgeAgentResumeRequest,
+    _: ProjectReadAccess,
 ):
     project_model = await ProjectModel.create_instance(
         db_client=request.app.db_client,
@@ -262,6 +282,7 @@ async def stream_resumed_knowledge_agent_chat(
     request: Request,
     project_id: int,
     payload: KnowledgeAgentResumeRequest,
+    _: ProjectReadAccess,
 ):
     project_model = await ProjectModel.create_instance(
         db_client=request.app.db_client,
@@ -308,6 +329,7 @@ async def get_knowledge_agent_memory(
     request: Request,
     project_id: int,
     thread_id: str,
+    _: ProjectReadAccess,
 ):
     project_model = await ProjectModel.create_instance(
         db_client=request.app.db_client,
@@ -333,6 +355,7 @@ async def clear_knowledge_agent_memory(
     request: Request,
     project_id: int,
     thread_id: str,
+    _: ProjectWriteAccess,
     confirm: bool = Query(
         default=False,
         description=(

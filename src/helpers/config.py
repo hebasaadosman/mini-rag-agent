@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     AUTH_JWT_ISSUER: str = "mini-rag-agent"
     AUTH_JWT_AUDIENCE: str = "mini-rag-agent-api"
     AUTH_JWT_LEEWAY_SECONDS: int = 30
+    AUTHZ_ENABLED: bool = False
 
     # Outbound email. Credentials are consumed only by the SMTP adapter and
     # are never placed in agent state, prompts, or tool-call arguments.

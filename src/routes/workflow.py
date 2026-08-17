@@ -1,10 +1,14 @@
 from celery import chain
-from fastapi import APIRouter, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 
 from tasks.file_processing import process_project_files
 from tasks.index_processing import index_project_task
 from .schemes.data import ProcessRequest
+from authorization import ProjectAccess, ProjectPermission
+from authorization.dependencies import require_project_permission
 
 
 workflow_router = APIRouter(
@@ -17,6 +21,10 @@ workflow_router = APIRouter(
 async def process_and_push(
     project_id: int,
     process_request: ProcessRequest,
+    _: Annotated[
+        ProjectAccess,
+        Depends(require_project_permission(ProjectPermission.WRITE)),
+    ],
 ):
     workflow = chain(
         process_project_files.si(
