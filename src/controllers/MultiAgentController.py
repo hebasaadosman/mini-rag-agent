@@ -2,6 +2,7 @@ from typing import Any
 
 from agents.multi_agent.api_schemas import MultiAgentResponse
 from pydantic import ValidationError
+from validation import MultiAgentOutputContractError, MultiAgentOutputValidator
 
 
 class MultiAgentController:
@@ -134,14 +135,16 @@ class MultiAgentController:
                 "The Multi-Agent workflow returned an invalid response.",
             )
         try:
+            payload = {
+                **result,
+                "project_id": project_id,
+                "thread_id": thread_id.strip(),
+            }
+            MultiAgentOutputValidator.validate(payload)
             return MultiAgentResponse.model_validate(
-                {
-                    **result,
-                    "project_id": project_id,
-                    "thread_id": thread_id.strip(),
-                }
+                payload
             )
-        except ValidationError:
+        except (MultiAgentOutputContractError, ValidationError):
             return MultiAgentController._failure(
                 project_id,
                 thread_id,
