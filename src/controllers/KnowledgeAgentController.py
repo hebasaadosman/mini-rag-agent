@@ -12,13 +12,14 @@ from agents.knowledge_agent.schemas import (
 )
 from agents.knowledge_agent.service import KnowledgeAgent
 from agents.tools import (
-     ListProjectAssetsTool,
-    SearchProjectChunksTool,
-    ToolRegistry,
-    SearchAssetsByNameTool,
+    AllowlistToolExecutionGuard,
     GetAssetDetailsTool,
+    ListProjectAssetsTool,
     ReadAssetTool,
     RequestClarificationTool,
+    SearchAssetsByNameTool,
+    SearchProjectChunksTool,
+    ToolRegistry,
 )
 from models.ProjectModel import ProjectModel
 
@@ -445,7 +446,18 @@ class KnowledgeAgentController(BaseController):
         the project_id controlled by the backend.
         """
 
-        registry = ToolRegistry()
+        registry = ToolRegistry(
+            execution_guard=AllowlistToolExecutionGuard(
+                allowed_tools={
+                    "request_clarification",
+                    "search_project_chunks",
+                    "list_project_assets",
+                    "search_assets_by_name",
+                    "get_asset_details",
+                    "read_asset",
+                },
+            )
+        )
 
         registry.register_tool(RequestClarificationTool())
 
