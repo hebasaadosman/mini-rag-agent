@@ -3,6 +3,18 @@ services:
     container_name: !reset null
     image: ${APP_IMAGE:?APP_IMAGE must be set}
     build: !reset null
+    # Each Uvicorn process initializes the complete AI runtime, including the
+    # PostgreSQL checkpointer. Keep a single web worker on the 4 GB instance;
+    # Celery workers handle the independent background workloads.
+    command:
+      - uvicorn
+      - main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --workers
+      - "1"
     environment:
       APP_ENV: production
     ports: !override
