@@ -93,6 +93,14 @@ services:
     container_name: !reset null
     ports: !override []
     restart: always
+    # RabbitMQ's diagnostic command can exceed the development timeout while
+    # the broker restores state on the small production instance.
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 60s
 
   redis:
     container_name: !reset null
