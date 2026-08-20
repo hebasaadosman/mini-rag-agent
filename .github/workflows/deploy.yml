@@ -235,12 +235,42 @@ jobs:
           import json
           import os
           from pathlib import Path
+          from urllib.parse import quote
 
           path = Path("docker/env/.env.app")
+
+          def read_env_file(path: Path) -> dict[str, str]:
+              values: dict[str, str] = {}
+              for raw_line in path.read_text().splitlines():
+                  line = raw_line.strip()
+                  if not line or line.startswith("#") or "=" not in line:
+                      continue
+                  key, value = line.split("=", 1)
+                  value = value.strip()
+                  if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+                      value = value[1:-1]
+                  values[key.strip()] = value
+              return values
+
+          rabbitmq = read_env_file(Path("docker/env/.env.rabbitmq"))
+          redis = read_env_file(Path("docker/env/.env.redis"))
+          rabbitmq_user = rabbitmq["RABBITMQ_DEFAULT_USER"]
+          rabbitmq_password = rabbitmq["RABBITMQ_DEFAULT_PASS"]
+          rabbitmq_vhost = rabbitmq.get("RABBITMQ_DEFAULT_VHOST", "mini_rag").lstrip("/")
+          redis_password = redis["REDIS_PASSWORD"]
+
           updates = {
               "AUTH_ENABLED": "true",
               "AUTHZ_ENABLED": "true",
               "AUTH_JWT_SECRET": os.environ["PROD_AUTH_JWT_SECRET"],
+              "CELERY_BROKER_URL": (
+                  f"amqp://{quote(rabbitmq_user, safe='')}:"
+                  f"{quote(rabbitmq_password, safe='')}@rabbitmq:5672/"
+                  f"{quote(rabbitmq_vhost, safe='')}"
+              ),
+              "CELERY_RESULT_BACKEND": (
+                  f"redis://:{quote(redis_password, safe='')}@redis:6379/0"
+              ),
           }
           lines = path.read_text().splitlines()
           remaining = dict(updates)
