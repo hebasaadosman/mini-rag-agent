@@ -48,6 +48,7 @@
 .hero {
   max-width: 760px;
   margin-bottom: 3rem;
+  text-align: right;
 }
 
 .hero h1,
@@ -114,6 +115,13 @@ label {
 label span {
   color: #778397;
   font-weight: 400;
+}
+
+.sso-copy {
+  min-height: 7.25rem;
+  margin: 0;
+  color: #a8b3c7;
+  line-height: 1.65;
 }
 
 textarea {
@@ -192,6 +200,7 @@ button:disabled {
   margin-top: 1rem;
   padding: 1rem 1.2rem;
   color: #cbd5e1;
+  text-align: right;
 }
 
 .message.success {

@@ -1,7 +1,8 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { environment } from '../environments/environment';
 
 interface Principal {
   subject: string;
@@ -19,19 +20,31 @@ interface ProjectResponse {
   styleUrl: './app.scss',
   templateUrl: './app.html',
 })
-export class App {
+export class App implements OnInit {
   private readonly http = inject(HttpClient);
 
-  protected readonly token = signal(sessionStorage.getItem('mini-rag-dev-token') ?? '');
+  protected readonly manualTokenEnabled = environment.manualDevelopmentTokenEnabled;
+  protected readonly token = signal(
+    this.manualTokenEnabled ? sessionStorage.getItem('mini-rag-dev-token') ?? '' : '',
+  );
   protected readonly projectDescription = signal('');
   protected readonly principal = signal<Principal | null>(null);
   protected readonly currentProject = signal<ProjectResponse | null>(null);
   protected readonly isLoading = signal(false);
-  protected readonly message = signal('أدخلي access token مؤقتًا ثم تحققي من الهوية.');
+  protected readonly message = signal('يلزم access token مؤقت للتحقق من الهوية.');
   protected readonly messageTone = signal<'neutral' | 'success' | 'error'>('neutral');
   protected readonly isAuthenticated = computed(() => this.principal() !== null);
 
+  async ngOnInit(): Promise<void> {
+    if (!this.manualTokenEnabled || this.token()) {
+      await this.verifyIdentity();
+    }
+  }
+
   protected updateToken(value: string): void {
+    if (!this.manualTokenEnabled) {
+      return;
+    }
     this.token.set(value.trim());
     this.principal.set(null);
     this.currentProject.set(null);
@@ -48,8 +61,8 @@ export class App {
   }
 
   protected async verifyIdentity(): Promise<void> {
-    if (!this.token()) {
-      this.setMessage('أدخلي bearer token أولًا.', 'error');
+    if (this.manualTokenEnabled && !this.token()) {
+      this.setMessage('يلزم bearer token أولًا.', 'error');
       return;
     }
 
@@ -68,9 +81,13 @@ export class App {
     }
   }
 
+  protected startSingleSignOn(): void {
+    window.location.assign('/api/v1/auth/login');
+  }
+
   protected async createProject(): Promise<void> {
     if (!this.isAuthenticated()) {
-      this.setMessage('تحققي من الهوية قبل إنشاء Project.', 'error');
+      this.setMessage('يجب التحقق من الهوية قبل إنشاء Project.', 'error');
       return;
     }
 
@@ -80,7 +97,7 @@ export class App {
         this.http.post<ProjectResponse>(
           '/api/v1/projects',
           { description: this.projectDescription().trim() || null },
-          { headers: this.authHeaders() },
+          { headers: this.requestHeaders() },
         ),
       );
       this.currentProject.set(project);
@@ -93,7 +110,24 @@ export class App {
   }
 
   private authHeaders(): HttpHeaders {
-    return new HttpHeaders({ Authorization: `Bearer ${this.token()}` });
+    return this.manualTokenEnabled
+      ? new HttpHeaders({ Authorization: `Bearer ${this.token()}` })
+      : new HttpHeaders();
+  }
+
+  private requestHeaders(): HttpHeaders {
+    let headers = this.authHeaders();
+    if (this.manualTokenEnabled) {
+      return headers;
+    }
+
+    const csrfToken = document.cookie
+      .split('; ')
+      .find((cookie) => cookie.startsWith('mini_rag_csrf='))
+      ?.split('=')[1];
+    return csrfToken
+      ? headers.set('X-CSRF-Token', decodeURIComponent(csrfToken))
+      : headers;
   }
 
   private setMessage(message: string, tone: 'neutral' | 'success' | 'error'): void {

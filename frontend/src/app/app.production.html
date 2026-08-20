@@ -1,0 +1,38 @@
+<main class="shell">
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Multi-Agent RAG home">Multi-Agent RAG</a>
+    <span class="environment">Secure workspace</span>
+  </header>
+
+  <section class="hero" dir="rtl" aria-labelledby="workspace-title">
+    <p class="eyebrow">Secure AI workspace</p>
+    <h1 id="workspace-title">دورة <bdi dir="ltr">RAG</bdi> تبدأ بهوية موثوقة.</h1>
+    <p>تتم المصادقة عبر نظام الهوية المؤسسي وجلسة <bdi dir="ltr">HttpOnly</bdi> آمنة.</p>
+  </section>
+
+  <section class="workspace-grid" aria-label="Project workspace setup">
+    <article class="card" aria-labelledby="identity-title">
+      <div class="card-heading"><p class="step">01</p><h2 id="identity-title">Verify identity</h2></div>
+      <p class="sso-copy">لا تحفظ الواجهة أي <bdi dir="ltr">access token</bdi>. يتم التحقق من الهوية من الجلسة الآمنة.</p>
+      <button type="button" (click)="startSingleSignOn()" [disabled]="isLoading()">Sign in with SSO</button>
+      @if (principal(); as user) {
+        <div class="identity-result" aria-live="polite"><span class="status-dot" aria-hidden="true"></span><div><strong>{{ user.subject }}</strong><p>{{ user.roles.length ? user.roles.join(', ') : 'No global roles in token' }}</p></div></div>
+      }
+    </article>
+
+    <article class="card" aria-labelledby="project-title">
+      <div class="card-heading"><p class="step">02</p><h2 id="project-title">Create project</h2></div>
+      <label for="description">Project description <span>(optional)</span></label>
+      <textarea id="description" rows="5" [value]="projectDescription()" (input)="updateProjectDescription($any($event.target).value)" placeholder="مثال: سياسات الموارد البشرية"></textarea>
+      <button type="button" (click)="createProject()" [disabled]="isLoading() || !isAuthenticated()">Create project</button>
+      @if (currentProject(); as project) {
+        <div class="identity-result" aria-live="polite"><span class="status-dot" aria-hidden="true"></span><div><strong>Project #{{ project.project_id }}</strong><p>{{ project.role }} · جاهز للـupload في الخطوة التالية</p></div></div>
+      }
+    </article>
+  </section>
+
+  <aside class="message" dir="rtl" [class.success]="messageTone() === 'success'" [class.error]="messageTone() === 'error'" aria-live="polite">{{ message() }}</aside>
+  <section class="next-step" dir="rtl" aria-labelledby="next-title"><p class="eyebrow">Next</p><h2 id="next-title">Upload → Process → Index → Chat</h2><p>سنضيف هذه الدورة في الـfeature التالية بعد تثبيت الاتصال والـproject context.</p></section>
+</main>
+
+<router-outlet />

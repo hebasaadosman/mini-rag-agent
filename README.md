@@ -767,6 +767,8 @@ The six `PROD_ENV_*` secrets are multiline secrets. Copy the entire correspondin
 
 The application now includes an opt-in JWT authentication foundation, project-level RBAC, an append-only audit trail, server-side tool allowlists, and multi-agent output validation. They are intentionally disabled in the committed example configuration so existing local Swagger workflows remain compatible.
 
+For production browser authentication, see [the OIDC BFF authentication flow](docs/AUTHENTICATION.md). It keeps user tokens out of Angular and uses server-side Redis sessions with HttpOnly cookies and CSRF protection.
+
 Before enabling them in a protected environment:
 
 1. Run `alembic upgrade head` to create `project_memberships` and `audit_events`.

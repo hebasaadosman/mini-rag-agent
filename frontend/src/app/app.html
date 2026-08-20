@@ -1,16 +1,21 @@
 <main class="shell">
   <header class="topbar">
-    <a class="brand" href="/" aria-label="Mini RAG Agent home">Mini RAG Agent</a>
+    <a class="brand" href="/" aria-label="Multi-Agent RAG home">Multi-Agent RAG</a>
     <span class="environment">Development workspace</span>
   </header>
 
-  <section class="hero" aria-labelledby="workspace-title">
+  <section class="hero" dir="rtl" aria-labelledby="workspace-title">
     <p class="eyebrow">Secure AI workspace</p>
-    <h1 id="workspace-title">ابدئي دورة الـRAG من هوية موثوقة.</h1>
-    <p>
-      هذه البداية تربط الواجهة بالـAPI فقط. الـtoken يحفظ في session storage للجلسة الحالية،
-      ولا توجد كلمة مرور أو secret داخل الواجهة.
-    </p>
+    <h1 id="workspace-title">دورة <bdi dir="ltr">RAG</bdi> تبدأ بهوية موثوقة.</h1>
+    @if (manualTokenEnabled) {
+      <p>
+        وضع التطوير فقط: الـ<bdi dir="ltr">token</bdi> يحفظ في
+        <bdi dir="ltr">session storage</bdi> للجلسة الحالية، ولا توجد كلمة مرور أو
+        <bdi dir="ltr">secret</bdi> داخل الواجهة.
+      </p>
+    } @else {
+      <p>تتم المصادقة عبر نظام الهوية المؤسسي وجلسة <bdi dir="ltr">HttpOnly</bdi> آمنة.</p>
+    }
   </section>
 
   <section class="workspace-grid" aria-label="Project workspace setup">
@@ -19,23 +24,28 @@
         <p class="step">01</p>
         <h2 id="identity-title">Verify identity</h2>
       </div>
-      <label for="token">Development access token</label>
-      <textarea
-        id="token"
-        rows="5"
-        [value]="token()"
-        (input)="updateToken($any($event.target).value)"
-        autocomplete="off"
-        spellcheck="false"
-        placeholder="Paste a short-lived bearer token"
-      ></textarea>
-      <button type="button" (click)="verifyIdentity()" [disabled]="isLoading()">
-        {{ isLoading() ? 'Working…' : 'Verify token' }}
-      </button>
+      @if (manualTokenEnabled) {
+        <label for="token">Development access token</label>
+        <textarea
+          id="token"
+          rows="5"
+          [value]="token()"
+          (input)="updateToken($any($event.target).value)"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="Paste a short-lived bearer token"
+        ></textarea>
+        <button type="button" (click)="verifyIdentity()" [disabled]="isLoading()">
+          {{ isLoading() ? 'Working…' : 'Verify token' }}
+        </button>
+      } @else {
+        <p class="sso-copy">تتم المصادقة عبر نظام الهوية المؤسسي. لا تحفظ الواجهة أي access token.</p>
+        <button type="button" (click)="startSingleSignOn()">Sign in with SSO</button>
+      }
 
       @if (principal(); as user) {
         <div class="identity-result" aria-live="polite">
-          <span class="status-dot"></span>
+          <span class="status-dot" aria-hidden="true"></span>
           <div>
             <strong>{{ user.subject }}</strong>
             <p>{{ user.roles.length ? user.roles.join(', ') : 'No global roles in token' }}</p>
@@ -63,7 +73,7 @@
 
       @if (currentProject(); as project) {
         <div class="identity-result" aria-live="polite">
-          <span class="status-dot"></span>
+          <span class="status-dot" aria-hidden="true"></span>
           <div>
             <strong>Project #{{ project.project_id }}</strong>
             <p>{{ project.role }} · جاهز للـupload في الخطوة التالية</p>
@@ -73,11 +83,11 @@
     </article>
   </section>
 
-  <aside class="message" [class.success]="messageTone() === 'success'" [class.error]="messageTone() === 'error'" aria-live="polite">
+  <aside class="message" dir="rtl" [class.success]="messageTone() === 'success'" [class.error]="messageTone() === 'error'" aria-live="polite">
     {{ message() }}
   </aside>
 
-  <section class="next-step" aria-labelledby="next-title">
+  <section class="next-step" dir="rtl" aria-labelledby="next-title">
     <p class="eyebrow">Next</p>
     <h2 id="next-title">Upload → Process → Index → Chat</h2>
     <p>سنضيف هذه الدورة في الـfeature التالية بعد تثبيت الاتصال والـproject context.</p>
