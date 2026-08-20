@@ -1,4 +1,5 @@
 import unittest
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -49,6 +50,12 @@ class _Locks:
 
 class MultiAgentRouteTests(unittest.TestCase):
     def setUp(self):
+        self._previous_auth_enabled = os.environ.get("AUTH_ENABLED")
+        self._previous_authz_enabled = os.environ.get("AUTHZ_ENABLED")
+        # These route tests exercise orchestration and validation. Authorization
+        # has dedicated tests; disabling it here keeps this fixture isolated.
+        os.environ["AUTH_ENABLED"] = "false"
+        os.environ["AUTHZ_ENABLED"] = "false"
         app = FastAPI()
         self.controller = _Controller()
         self.locks = _Locks()
@@ -56,6 +63,16 @@ class MultiAgentRouteTests(unittest.TestCase):
         app.agent_thread_locks = self.locks
         app.include_router(agents_router)
         self.client = TestClient(app)
+
+    def tearDown(self):
+        for name, previous in (
+            ("AUTH_ENABLED", self._previous_auth_enabled),
+            ("AUTHZ_ENABLED", self._previous_authz_enabled),
+        ):
+            if previous is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = previous
 
     def test_chat_endpoint_calls_controller_under_thread_lock(self):
         response = self.client.post(

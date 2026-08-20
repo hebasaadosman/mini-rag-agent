@@ -5,7 +5,18 @@ services:
       dockerfile: docker/mini_rag/Dockerfile
     ports:
       - "8000:8000"
+    # Share uploaded files with host-run Uvicorn and Celery workers during local development.
+    volumes:
+      - ../src/assets:/app/assets
     restart: unless-stopped
+
+  celery-file-worker:
+    volumes:
+      - ../src/assets:/app/assets
+
+  celery-index-worker:
+    volumes:
+      - ../src/assets:/app/assets
 
   pgvector:
     ports:

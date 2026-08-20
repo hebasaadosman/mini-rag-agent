@@ -98,8 +98,9 @@ async def process_endpoint(request: Request, project_id: int, process_request: P
     )
 
    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
         content={
-            "signal": ResponseSignals.FILE_PROCESS_SUCCESS.value,
+            "signal": ResponseSignals.FILE_PROCESSING_TASK_QUEUED.value,
             "task_id": task.id
         }
     )

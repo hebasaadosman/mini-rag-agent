@@ -13,6 +13,7 @@ class ResponseSignals(Enum):
     FILE_UPLOAD_SUCCESS = "File uploaded successfully"
     FILE_PROCESS_FAILED = "File processing failed"
     FILE_PROCESS_SUCCESS = "File processed successfully"
+    FILE_PROCESSING_TASK_QUEUED = "File processing task queued"
     FILE_ID_ERROR = "File ID error"
     FILE_NOT_FOUND = "File not found"
     NO_FILES_ERROR = "No files found for the project"
