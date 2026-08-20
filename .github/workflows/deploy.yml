@@ -269,16 +269,56 @@ jobs:
 
           echo "Starting isolated application dependencies..."
 
+          # Do not make the deployment depend on Docker's RabbitMQ health
+          # status.  On the small production instance its diagnostic health
+          # command may time out while the broker is otherwise reachable.
           docker compose \
             "${COMPOSE_FILES[@]}" \
             up \
             -d \
             --no-build \
-            --wait \
             pgvector \
             qdrant \
             rabbitmq \
             redis
+
+          echo "Waiting for RabbitMQ broker..."
+
+          RABBITMQ_CONTAINER_ID="$(
+            docker compose \
+              "${COMPOSE_FILES[@]}" \
+              ps \
+              -q \
+              rabbitmq
+          )"
+
+          if [ -z "$RABBITMQ_CONTAINER_ID" ]; then
+            echo "RabbitMQ container was not created."
+            exit 1
+          fi
+
+          for attempt in {1..18}; do
+            if docker exec \
+              "$RABBITMQ_CONTAINER_ID" \
+              rabbitmq-diagnostics \
+              -q \
+              ping; then
+              echo "RabbitMQ broker is reachable."
+              break
+            fi
+
+            if [ "$attempt" -eq 18 ]; then
+              echo "RabbitMQ broker did not become reachable."
+              docker compose \
+                "${COMPOSE_FILES[@]}" \
+                logs \
+                --tail=200 \
+                rabbitmq
+              exit 1
+            fi
+
+            sleep 5
+          done
 
           echo "Running Alembic migrations..."
 
@@ -391,9 +431,6 @@ jobs:
             fastapi
             celery-file-worker
             celery-index-worker
-            celery-maintenance-worker
-            celery-beat
-            flower
           )
 
           docker compose \
@@ -483,6 +520,17 @@ jobs:
 
           docker image prune \
             -f
+
+          echo "Recreating public reverse proxy..."
+
+          docker compose \
+            "${COMPOSE_FILES[@]}" \
+            up \
+            -d \
+            --no-build \
+            --no-deps \
+            --force-recreate \
+            nginx
 
           echo "Deployment completed successfully."
 
