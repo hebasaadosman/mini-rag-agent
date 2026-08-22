@@ -2,7 +2,11 @@ from fastapi import FastAPI
 from models.ChunkModel import ChunkModel
 from observability.langsmith import configure_langsmith
 from routes import auth, base,data,nlp,projects,workflow
-from helpers.config import get_settings, Settings
+from helpers.config import (
+    get_settings,
+    Settings,
+    ensure_production_authorization_enabled,
+)
 from stores.llm.LLMProviderFactory import LLMProviderFactory
 from stores.vectordb.VectorDBProviderFactory import VectorDBProviderFactory
 from stores.llm.templates.template_parser import TemplateParser
@@ -14,6 +18,7 @@ from controllers import KnowledgeAgentController, MultiAgentController
 from models.AssetModel import AssetModel
 from models.ProjectModel import ProjectModel
 from models.ProjectMembershipModel import ProjectMembershipModel
+from models.ConversationThreadModel import ConversationThreadModel
 from models.AuditEventModel import AuditEventModel
 from authorization import ProjectAuthorizer
 from auditing.audit_logger import DatabaseAuditLogger
@@ -26,6 +31,9 @@ from persistence.checkpointing import (
 )
 from utils.async_keyed_lock import PostgresAdvisoryKeyedLock
 from infrastructure.email import create_send_email_tool
+from authentication import OIDCClient, OIDCConfiguration, RedisSessionStore
+from authentication.session_url import resolve_auth_session_redis_url
+from redis import asyncio as redis_asyncio
 settings = get_settings()
 
 configure_langsmith(settings)
@@ -33,11 +41,27 @@ app = FastAPI()
 
 @app.on_event("startup")
 async def startup_db_client():
+    ensure_production_authorization_enabled(settings)
 
     # app.db_mongo_conn = AsyncIOMotorClient(settings.MONGODB_URI)
     postgres_conn = f"postgresql+asyncpg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
     app.pg_engine = create_async_engine(postgres_conn, echo=True)
     app.db_client = sessionmaker(app.pg_engine, class_=AsyncSession, expire_on_commit=False)
+
+    if settings.AUTH_ENABLED and settings.AUTH_MODE.strip().lower() == "bff_oidc":
+        auth_session_redis_url = resolve_auth_session_redis_url(settings)
+        app.auth_redis = redis_asyncio.from_url(
+            auth_session_redis_url,
+            decode_responses=True,
+        )
+        await app.auth_redis.ping()
+        app.auth_session_store = RedisSessionStore(
+            app.auth_redis,
+            idle_timeout_seconds=settings.AUTH_SESSION_IDLE_TIMEOUT_SECONDS,
+            absolute_timeout_seconds=settings.AUTH_SESSION_ABSOLUTE_TIMEOUT_SECONDS,
+            transaction_ttl_seconds=settings.AUTH_OIDC_TRANSACTION_TTL_SECONDS,
+        )
+        app.oidc_client = OIDCClient(OIDCConfiguration.from_settings(settings))
 
     llm_provider_factory = LLMProviderFactory(config=settings.dict())
     vector_db_provider_factory = VectorDBProviderFactory(config=settings.dict(),db_client=app.db_client)
@@ -61,6 +85,9 @@ async def startup_db_client():
         db_client=app.db_client,
     )
     app.project_membership_model = await ProjectMembershipModel.create_instance(
+        db_client=app.db_client,
+    )
+    app.conversation_thread_model = await ConversationThreadModel.create_instance(
         db_client=app.db_client,
     )
     audit_event_model = await AuditEventModel.create_instance(
@@ -139,6 +166,8 @@ async def shutdown_db_client():
         await app.vectordb_client.disconnect()
     if getattr(app, "pg_engine", None):
         await app.pg_engine.dispose()
+    if getattr(app, "auth_redis", None):
+        await app.auth_redis.aclose()
 
 
 app.include_router(base.base_router)

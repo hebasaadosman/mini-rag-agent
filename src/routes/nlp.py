@@ -18,6 +18,7 @@ from typing import Any
 from tasks.index_processing import index_project_task
 from authorization import ProjectAccess, ProjectPermission
 from authorization.dependencies import require_project_permission
+from auditing.correlation import background_request_metadata, request_correlation_id
 
 logger = logging.getLogger("uvicorn.error")
 nlp_router = APIRouter(
@@ -65,14 +66,20 @@ def calculate_retry_delay(attempt: int) -> float:
 
 @nlp_router.post("/index/push/{project_id}")
 async def index_project(
+    request: Request,
     project_id: int,
     push_request: PushRequest,
-    _: ProjectWriteAccess,
+    access: ProjectWriteAccess,
 ):
     task = index_project_task.apply_async(
         kwargs={
             "project_id": project_id,
             "do_reset": push_request.do_reset,
+            "principal_id": access.principal_id,
+            "correlation_id": request_correlation_id(request),
+            "request_metadata": background_request_metadata(
+                route="POST /api/v1/nlp/index/push/{project_id}"
+            ),
         },
         queue="index_processing",
     )
@@ -91,11 +98,7 @@ async def get_project_index_info(request: Request, project_id: int, access: Proj
     project_model= await ProjectModel.create_instance(
            db_client=request.app.db_client
    )
-    project = (
-        await project_model.get_project_by_id(project_id)
-        if access.enforced
-        else await project_model.get_project_or_create_one(project_id)
-    )
+    project = await project_model.get_project_by_id(project_id)
     if not project:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -123,11 +126,7 @@ async def search_project_index(request: Request, project_id: int, search_request
     project_model= await ProjectModel.create_instance(
            db_client=request.app.db_client
    )
-    project = (
-        await project_model.get_project_by_id(project_id)
-        if access.enforced
-        else await project_model.get_project_or_create_one(project_id)
-    )
+    project = await project_model.get_project_by_id(project_id)
     if not project:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -160,11 +159,7 @@ async def answer_rag_question(request: Request, project_id: int, search_request:
     project_model= await ProjectModel.create_instance(
            db_client=request.app.db_client
    )
-    project = (
-        await project_model.get_project_by_id(project_id)
-        if access.enforced
-        else await project_model.get_project_or_create_one(project_id)
-    )
+    project = await project_model.get_project_by_id(project_id)
     if not project:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -190,6 +190,7 @@ class KnowledgeAgentStreamingTests(unittest.IsolatedAsyncioTestCase):
             ),
             tool_registry=ToolRegistry(),
             checkpointer=InMemorySaver(),
+            checkpoint_key="test-stream-answer",
         )
 
         events = [
@@ -232,6 +233,7 @@ class KnowledgeAgentStreamingTests(unittest.IsolatedAsyncioTestCase):
             ),
             tool_registry=_ToolRegistry(),
             checkpointer=InMemorySaver(),
+            checkpoint_key="test-stream-tool",
         )
 
         events = [
@@ -262,6 +264,7 @@ class KnowledgeAgentStreamingTests(unittest.IsolatedAsyncioTestCase):
             ),
             tool_registry=ToolRegistry(),
             checkpointer=InMemorySaver(),
+            checkpoint_key="test-stream-provider-failure",
         )
 
         events = [
@@ -306,6 +309,7 @@ class KnowledgeAgentStreamingTests(unittest.IsolatedAsyncioTestCase):
             llm_provider=provider,
             tool_registry=registry,
             checkpointer=InMemorySaver(),
+            checkpoint_key="test-stream-clarification",
         )
 
         interrupted = [

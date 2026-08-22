@@ -4,5 +4,6 @@ from .mini_rag.schemes import (
     DataChunk,
     Project,
     ProjectMembership,
+    ConversationThread,
     RetrieveDocument,
 )

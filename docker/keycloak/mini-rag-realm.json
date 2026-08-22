@@ -1,0 +1,81 @@
+{
+  "realm": "mini-rag",
+  "enabled": true,
+  "displayName": "Mini RAG OIDC Sandbox",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "roles": {
+    "realm": [
+      { "name": "platform_admin", "description": "Development sandbox administrator" },
+      { "name": "analyst", "description": "Development sandbox analyst" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "mini-rag-bff",
+      "name": "Mini RAG BFF sandbox",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "implicitFlowEnabled": false,
+      "redirectUris": [
+        "http://127.0.0.1:8000/api/v1/auth/callback",
+        "http://localhost:8000/api/v1/auth/callback"
+      ],
+      "webOrigins": [
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+        "http://127.0.0.1:4200",
+        "http://localhost:4200"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "realm roles for BFF",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "heba.admin",
+      "enabled": true,
+      "firstName": "Heba",
+      "lastName": "Admin",
+      "email": "heba.admin@example.test",
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "local-keycloak-test-password", "temporary": false }
+      ],
+      "realmRoles": ["platform_admin"]
+    },
+    {
+      "username": "analyst.user",
+      "enabled": true,
+      "firstName": "Analyst",
+      "lastName": "User",
+      "email": "analyst.user@example.test",
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "local-keycloak-test-password", "temporary": false }
+      ],
+      "realmRoles": ["analyst"]
+    }
+  ]
+}

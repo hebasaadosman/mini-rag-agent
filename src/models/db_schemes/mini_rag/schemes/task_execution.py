@@ -66,6 +66,21 @@ class TaskExecution(SQLAlchemyBase):
     nullable=False,
     )
 
+    principal_id = Column(
+        String(255),
+        nullable=True,
+    )
+
+    correlation_id = Column(
+        String(128),
+        nullable=True,
+    )
+
+    request_metadata = Column(
+        JSONB,
+        nullable=True,
+    )
+
     asset_id = Column(
     Integer,
     nullable=True,
@@ -106,6 +121,14 @@ class TaskExecution(SQLAlchemyBase):
     Index(
         "ix_task_executions_status",
         "status",
+    ),
+    Index(
+        "ix_task_executions_principal_id",
+        "principal_id",
+    ),
+    Index(
+        "ix_task_executions_correlation_id",
+        "correlation_id",
     ),
     Index(
             "ix_task_executions_lease_expires_at",

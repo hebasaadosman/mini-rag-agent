@@ -56,6 +56,7 @@ class KnowledgeAgentGraph:
         llm_provider,
         tool_registry,
         checkpointer=None,
+        checkpoint_key: str | None = None,
         max_iterations: int = 5,
         max_memory_messages: int = 40,
     ) -> None:
@@ -71,6 +72,12 @@ class KnowledgeAgentGraph:
         self._max_iterations = max_iterations
         self._checkpointer = checkpointer
         self._project_id = project_id
+        self._checkpoint_key = str(checkpoint_key or "").strip() or None
+        if self._checkpointer is not None and self._checkpoint_key is None:
+            raise ValueError(
+                "A server-generated checkpoint_key is required when "
+                "checkpointing is enabled."
+            )
         self._max_memory_messages = max_memory_messages
         self._build_state_node = (
             BuildStateNode(
@@ -330,7 +337,7 @@ class KnowledgeAgentGraph:
         *,
         streaming: bool = False,
     ) -> RunnableConfig:
-        scoped_thread_id = f"project:{self._project_id}:{thread_id}"
+        scoped_thread_id = self._get_scoped_thread_id(thread_id)
 
         return {
             "configurable": {
@@ -647,7 +654,8 @@ class KnowledgeAgentGraph:
         )
 
     def _get_scoped_thread_id(self, thread_id: str) -> str:
-        return f"project:{self._project_id}:{thread_id}"
+        del thread_id
+        return f"project:{self._project_id}:checkpoint:{self._checkpoint_key}"
 
     @staticmethod
     def _requires_asset_selection(state: KnowledgeAgentState) -> bool:

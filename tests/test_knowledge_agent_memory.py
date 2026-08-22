@@ -59,6 +59,21 @@ class _MemoryLLMProvider:
 
 @unittest.skipUnless(InMemorySaver, "langgraph is not installed")
 class KnowledgeAgentMemoryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_server_checkpoint_key_isolates_same_public_thread_id(self):
+        first = KnowledgeAgentGraph(
+            project_id=11,
+            llm_provider=self.provider,
+            tool_registry=ToolRegistry(),
+            checkpointer=InMemorySaver(),
+            checkpoint_key="owner-one",
+        )
+        # A separate saver is intentional here: this focused assertion only
+        # verifies the internal namespace shape without sharing provider state.
+        self.assertEqual(
+            first._build_config("same-public-id")["configurable"]["thread_id"],
+            "project:11:checkpoint:owner-one",
+        )
+
     async def asyncSetUp(self):
         self.provider = _MemoryLLMProvider()
         self.graph = KnowledgeAgentGraph(
@@ -66,6 +81,7 @@ class KnowledgeAgentMemoryTests(unittest.IsolatedAsyncioTestCase):
             llm_provider=self.provider,
             tool_registry=ToolRegistry(),
             checkpointer=InMemorySaver(),
+            checkpoint_key="test-memory-suite",
             max_memory_messages=5,
         )
 
@@ -112,12 +128,30 @@ class KnowledgeAgentMemoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cleared["message_count"], 0)
 
     async def test_different_thread_has_no_shared_context(self):
-        await self.graph.run(
+        checkpointer = InMemorySaver()
+        first_graph = KnowledgeAgentGraph(
+            project_id=11,
+            llm_provider=self.provider,
+            tool_registry=ToolRegistry(),
+            checkpointer=checkpointer,
+            checkpoint_key="server-key-thread-a",
+            max_memory_messages=5,
+        )
+        second_graph = KnowledgeAgentGraph(
+            project_id=11,
+            llm_provider=self.provider,
+            tool_registry=ToolRegistry(),
+            checkpointer=checkpointer,
+            checkpoint_key="server-key-thread-b",
+            max_memory_messages=5,
+        )
+
+        await first_graph.run(
             thread_id="thread-a",
             user_message="Remember secret A.",
             system_prompt="You are helpful.",
         )
-        await self.graph.run(
+        await second_graph.run(
             thread_id="thread-b",
             user_message="What do you remember?",
             system_prompt="You are helpful.",

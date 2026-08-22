@@ -25,3 +25,8 @@ class Project(SQLAlchemyBase):
         cascade="all, delete-orphan",
     )
     audit_events = relationship("AuditEvent", back_populates="project")
+    conversation_threads = relationship(
+        "ConversationThread",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )

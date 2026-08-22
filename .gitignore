@@ -73,9 +73,11 @@ src/assets/files/
 src/assets/database/
 docker/grafana-data/
 docker/prometheus-data/
+docker/keycloak/tls/
 
 # Generated evaluation reports
 src/evals/**/reports/*.json
+docs/MULTI_AGENT_QA_TEST_PLAN.md
 
 # Local migration configuration generated from examples
 docker/mini_rag/alembic.ini

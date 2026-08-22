@@ -78,7 +78,9 @@ def _runtime(*, send_email_tool=True):
     )
     return factory.create_multi_agent_runtime(
         llm_provider=_Provider(),
-        knowledge_agent_factory=lambda project_id: _KnowledgeAgent(),
+        knowledge_agent_factory=(
+            lambda project_id, checkpoint_key: _KnowledgeAgent()
+        ),
         send_email_tool=tool,
         checkpointer=InMemorySaver(),
     )
@@ -92,6 +94,7 @@ class LLMProviderFactoryAgentTests(unittest.IsolatedAsyncioTestCase):
             thread_id="existing-factory-001",
             message="Good morning",
             project_id=1,
+            checkpoint_key="test:existing-factory-001",
         )
 
         self.assertIsInstance(runtime, MultiAgentRuntime)
@@ -105,6 +108,7 @@ class LLMProviderFactoryAgentTests(unittest.IsolatedAsyncioTestCase):
             thread_id="existing-factory-002",
             message="Good morning",
             project_id=1,
+            checkpoint_key="test:existing-factory-002",
         )
 
         self.assertEqual(result["status"], "completed")
@@ -114,7 +118,9 @@ class LLMProviderFactoryAgentTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(TypeError, "llm_provider"):
             factory.create_multi_agent_runtime(
                 llm_provider=None,
-                knowledge_agent_factory=lambda project_id: _KnowledgeAgent(),
+                knowledge_agent_factory=(
+                    lambda project_id, checkpoint_key: _KnowledgeAgent()
+                ),
             )
         with self.assertRaisesRegex(TypeError, "knowledge_agent_factory"):
             factory.create_multi_agent_runtime(

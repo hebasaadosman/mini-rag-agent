@@ -4,8 +4,8 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-from authentication.dependencies import authenticate_bearer_credentials
+from authentication.dependencies import get_current_principal
+from authentication.principal import CurrentPrincipal
 from auditing import AuditAction, AuditOutcome, create_audit_event
 from authorization.project_access import (
     ProjectAccess,
@@ -87,8 +87,7 @@ def require_project_permission(permission: ProjectPermission):
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Authorization requires authentication to be enabled.",
             )
-
-        principal = authenticate_bearer_credentials(credentials, settings)
+        principal = await get_current_principal(request, credentials, settings)
         authorizer = getattr(request.app, "project_authorizer", None)
         if authorizer is None:
             raise HTTPException(

@@ -1,0 +1,237 @@
+:host {
+  display: block;
+  min-height: 100dvh;
+}
+
+.shell {
+  width: min(1120px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 1.5rem 0 4rem;
+}
+
+.topbar,
+.card-heading,
+.identity-result {
+  display: flex;
+  align-items: center;
+}
+
+.topbar {
+  justify-content: space-between;
+  padding-bottom: 4.5rem;
+}
+
+.brand {
+  color: #f8fafc;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+
+.environment,
+.eyebrow,
+.step {
+  color: #9ca3af;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.environment {
+  border: 1px solid #334155;
+  border-radius: 999px;
+  padding: 0.45rem 0.75rem;
+}
+
+.hero {
+  max-width: 760px;
+  margin-bottom: 3rem;
+  text-align: right;
+}
+
+.hero h1,
+.next-step h2 {
+  color: #f8fafc;
+  letter-spacing: -0.04em;
+}
+
+.hero h1 {
+  margin: 0.7rem 0 1rem;
+  font-size: clamp(2.3rem, 6vw, 4.6rem);
+  line-height: 1.05;
+}
+
+.hero > p:last-child,
+.next-step p,
+.identity-result p {
+  color: #a8b3c7;
+  line-height: 1.65;
+}
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.card,
+.message,
+.next-step {
+  border: 1px solid #293447;
+  border-radius: 1rem;
+  background: #111827;
+}
+
+.card {
+  padding: 1.5rem;
+}
+
+.card-heading {
+  gap: 0.8rem;
+  margin-bottom: 1.75rem;
+}
+
+.card-heading h2 {
+  margin: 0;
+  color: #e5e7eb;
+  font-size: 1.2rem;
+}
+
+.step {
+  margin: 0;
+  color: #6ee7b7;
+}
+
+label {
+  display: block;
+  margin-bottom: 0.55rem;
+  color: #d1d5db;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+label span {
+  color: #778397;
+  font-weight: 400;
+}
+
+.sso-copy {
+  min-height: 7.25rem;
+  margin: 0;
+  color: #a8b3c7;
+  line-height: 1.65;
+}
+
+textarea {
+  box-sizing: border-box;
+  width: 100%;
+  resize: vertical;
+  border: 1px solid #3a475c;
+  border-radius: 0.65rem;
+  background: #0b1220;
+  color: #e5e7eb;
+  padding: 0.8rem;
+  font: inherit;
+  line-height: 1.45;
+}
+
+textarea:focus-visible,
+button:focus-visible,
+.brand:focus-visible {
+  outline: 3px solid #6ee7b7;
+  outline-offset: 3px;
+}
+
+button {
+  width: 100%;
+  margin-top: 1rem;
+  border: 0;
+  border-radius: 0.65rem;
+  background: #34d399;
+  color: #06251c;
+  cursor: pointer;
+  padding: 0.8rem 1rem;
+  font: inherit;
+  font-weight: 800;
+}
+
+button:hover:not(:disabled) {
+  background: #6ee7b7;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.identity-result {
+  gap: 0.65rem;
+  margin-top: 1rem;
+  padding: 0.8rem;
+  border-radius: 0.65rem;
+  background: #0b1f1a;
+}
+
+.identity-result strong,
+.identity-result p {
+  margin: 0;
+}
+
+.identity-result strong {
+  color: #d1fae5;
+}
+
+.identity-result p {
+  font-size: 0.85rem;
+}
+
+.status-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #34d399;
+}
+
+.message,
+.next-step {
+  margin-top: 1rem;
+  padding: 1rem 1.2rem;
+  color: #cbd5e1;
+  text-align: right;
+}
+
+.message.success {
+  border-color: #168765;
+  color: #a7f3d0;
+}
+
+.message.error {
+  border-color: #b45359;
+  color: #fecaca;
+}
+
+.next-step {
+  margin-top: 3rem;
+  background: linear-gradient(115deg, #172033, #101827);
+}
+
+.next-step h2 {
+  margin: 0.35rem 0;
+}
+
+.next-step p {
+  margin: 0;
+}
+
+@media (max-width: 700px) {
+  .topbar {
+    padding-bottom: 3rem;
+  }
+
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}

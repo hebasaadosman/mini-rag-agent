@@ -1,5 +1,5 @@
 from .BaseDataModel import BaseDataModel
-from .db_schemes import Project
+from .db_schemes import Project, ProjectMembership
 from .enums.DatabaseEnum import DatabaseEnum
 from sqlalchemy.future import select
 from sqlalchemy import func
@@ -25,6 +25,28 @@ class ProjectModel(BaseDataModel):
             await session.refresh(project)
 
        
+        return project
+
+    async def create_project_with_creator_admin(
+        self,
+        *,
+        description: str | None,
+        creator_principal_id: str,
+    ) -> Project:
+        """Provision the project and its first admin as one transaction."""
+        project = Project(project_description=description)
+        async with self.db_client() as session:
+            async with session.begin():
+                session.add(project)
+                await session.flush()
+                session.add(
+                    ProjectMembership(
+                        project_id=project.project_id,
+                        principal_id=creator_principal_id,
+                        role="admin",
+                    )
+                )
+            await session.refresh(project)
         return project
 
     async def get_project_or_create_one(self, project_id: int):

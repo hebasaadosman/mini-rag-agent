@@ -1,5 +1,15 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List, Optional
+
+
+def ensure_production_authorization_enabled(settings: "Settings") -> None:
+    """Fail closed when a production process would start without authz."""
+    if settings.APP_ENV.strip().lower() in {"production", "prod"} and not settings.AUTHZ_ENABLED:
+        raise RuntimeError(
+            "AUTHZ_ENABLED must be true when APP_ENV is production."
+        )
+
+
 class Settings(BaseSettings):
 
 
@@ -75,6 +85,32 @@ class Settings(BaseSettings):
     AUTH_JWT_AUDIENCE: str = "mini-rag-agent-api"
     AUTH_JWT_LEEWAY_SECONDS: int = 30
     AUTHZ_ENABLED: bool = False
+
+    # Production browser authentication uses an OIDC BFF session. Bearer
+    # tokens remain available only when this explicit development flag is set.
+    AUTH_MODE: str = "bff_oidc"
+    AUTH_DEVELOPMENT_MANUAL_TOKEN_ENABLED: bool = False
+    AUTH_SESSION_REDIS_URL: Optional[str] = None
+    AUTH_SESSION_IDLE_TIMEOUT_SECONDS: int = 1800
+    AUTH_SESSION_ABSOLUTE_TIMEOUT_SECONDS: int = 28800
+    AUTH_SESSION_COOKIE_NAME: str = "mini_rag_session"
+    AUTH_CSRF_COOKIE_NAME: str = "mini_rag_csrf"
+    AUTH_CSRF_HEADER_NAME: str = "X-CSRF-Token"
+    AUTH_COOKIE_SECURE: bool = True
+    AUTH_COOKIE_SAMESITE: str = "lax"
+    AUTH_FRONTEND_SUCCESS_URL: str = "/"
+
+    AUTH_OIDC_ISSUER: Optional[str] = None
+    AUTH_OIDC_CLIENT_ID: Optional[str] = None
+    AUTH_OIDC_CLIENT_SECRET: Optional[str] = None
+    AUTH_OIDC_REDIRECT_URI: Optional[str] = None
+    AUTH_OIDC_AUTHORIZATION_ENDPOINT: Optional[str] = None
+    AUTH_OIDC_TOKEN_ENDPOINT: Optional[str] = None
+    AUTH_OIDC_JWKS_URL: Optional[str] = None
+    AUTH_OIDC_SCOPES: str = "openid profile email"
+    AUTH_OIDC_ROLES_CLAIM: str = "roles"
+    AUTH_OIDC_ALLOWED_ALGORITHMS: str = "RS256,ES256"
+    AUTH_OIDC_TRANSACTION_TTL_SECONDS: int = 600
 
     # Outbound email. Credentials are consumed only by the SMTP adapter and
     # are never placed in agent state, prompts, or tool-call arguments.

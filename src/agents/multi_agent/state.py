@@ -33,6 +33,7 @@ class TaskStatus(str, Enum):
 class MultiAgentState(TypedDict, total=False):
     project_id: int
     thread_id: str
+    checkpoint_key: str
     conversation_event: str
     gate_decision: dict[str, Any] | None
 
@@ -63,6 +64,7 @@ def build_initial_multi_agent_state(
     *,
     project_id: int | None = None,
     thread_id: str | None = None,
+    checkpoint_key: str | None = None,
 ) -> MultiAgentState:
     normalized_message = user_message.strip()
     if not normalized_message:
@@ -82,6 +84,12 @@ def build_initial_multi_agent_state(
             raise ValueError(
                 "thread_id must contain between 1 and 255 characters."
             )
+
+    normalized_checkpoint_key = None
+    if checkpoint_key is not None:
+        normalized_checkpoint_key = str(checkpoint_key).strip()
+        if not normalized_checkpoint_key or len(normalized_checkpoint_key) > 255:
+            raise ValueError("checkpoint_key must contain between 1 and 255 characters.")
 
     state: MultiAgentState = {
         "conversation_event": "new_message",
@@ -108,5 +116,7 @@ def build_initial_multi_agent_state(
         state["project_id"] = project_id
     if normalized_thread_id is not None:
         state["thread_id"] = normalized_thread_id
+    if normalized_checkpoint_key is not None:
+        state["checkpoint_key"] = normalized_checkpoint_key
 
     return state

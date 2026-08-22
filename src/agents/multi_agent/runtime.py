@@ -27,13 +27,20 @@ class MultiAgentRuntime:
         thread_id: str,
         message: str,
         project_id: int | None = None,
+        checkpoint_key: str | None = None,
     ) -> dict[str, Any]:
+        normalized_checkpoint_key = self._require_checkpoint_key(
+            checkpoint_key
+        )
         initial_state = build_initial_multi_agent_state(
             message,
             project_id=project_id,
             thread_id=self._normalize_thread_id(thread_id),
+            checkpoint_key=normalized_checkpoint_key,
         )
-        config = self._build_config(initial_state["thread_id"])
+        config = self._build_config(
+            initial_state["thread_id"], initial_state.get("checkpoint_key")
+        )
 
         graph_input: MultiAgentState = initial_state
         if self._has_checkpointer:
@@ -58,6 +65,7 @@ class MultiAgentRuntime:
         thread_id: str,
         response: str,
         project_id: int | None = None,
+        checkpoint_key: str | None = None,
     ) -> dict[str, Any]:
         if not self._has_checkpointer:
             raise RuntimeError(
@@ -69,7 +77,8 @@ class MultiAgentRuntime:
         if not normalized_response:
             raise ValueError("response cannot be blank.")
 
-        config = self._build_config(normalized_thread_id)
+        normalized_checkpoint_key = self._require_checkpoint_key(checkpoint_key)
+        config = self._build_config(normalized_thread_id, normalized_checkpoint_key)
         snapshot = await self._workflow.aget_state(config)
         checkpoint = dict(snapshot.values or {})
         if checkpoint:
@@ -85,6 +94,7 @@ class MultiAgentRuntime:
                 normalized_response,
                 project_id=project_id,
                 thread_id=normalized_thread_id,
+                checkpoint_key=normalized_checkpoint_key,
             )
             graph_input.update(
                 {
@@ -100,8 +110,10 @@ class MultiAgentRuntime:
         return self._public_result(final_state)
 
     @classmethod
-    def _build_config(cls, thread_id: str) -> RunnableConfig:
-        scoped_thread_id = f"{cls._THREAD_PREFIX}:{thread_id}"
+    def _build_config(
+        cls, thread_id: str, checkpoint_key: str
+    ) -> RunnableConfig:
+        scoped_thread_id = f"{cls._THREAD_PREFIX}:{checkpoint_key}"
         return {
             "configurable": {"thread_id": scoped_thread_id},
             "tags": ["mini-rag", "multi-agent"],
@@ -189,3 +201,25 @@ class MultiAgentRuntime:
                 "thread_id must contain between 1 and 255 characters."
             )
         return normalized
+
+    @staticmethod
+    def _normalize_checkpoint_key(checkpoint_key: str | None) -> str | None:
+        if checkpoint_key is None:
+            return None
+        normalized = str(checkpoint_key).strip()
+        if not normalized or len(normalized) > 255:
+            raise ValueError("checkpoint_key must contain between 1 and 255 characters.")
+        return normalized
+
+    def _require_checkpoint_key(self, checkpoint_key: str | None) -> str:
+        normalized = self._normalize_checkpoint_key(checkpoint_key)
+        if normalized is not None:
+            return normalized
+        if self._has_checkpointer:
+            raise ValueError(
+                "A server-generated checkpoint_key is required when "
+                "checkpointing is enabled."
+            )
+        # A stateless graph never reads or writes a checkpoint.  The value is
+        # retained only to satisfy the state contract and is not persisted.
+        return "stateless"

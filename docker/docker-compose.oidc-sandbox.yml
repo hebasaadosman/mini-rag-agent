@@ -1,0 +1,56 @@
+# Development-only OIDC sandbox.  Keycloak is intentionally isolated from the
+# application code: all provider details are supplied as environment values.
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3.2
+    command:
+      [
+        "start-dev",
+        "--import-realm",
+        "--https-certificate-file=/opt/keycloak/conf/tls/tls.crt",
+        "--https-certificate-key-file=/opt/keycloak/conf/tls/tls.key",
+        "--https-port=8443",
+      ]
+    env_file:
+      - ./env/.env.keycloak-sandbox
+    environment:
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_ENABLED: "true"
+      # Public loopback issuer for browser redirects and signed ID tokens.
+      KC_HOSTNAME: "https://127.0.0.1:8444"
+    ports:
+      - "8081:8080"
+      - "8444:8443"
+    volumes:
+      - ./keycloak/mini-rag-realm.json:/opt/keycloak/data/import/mini-rag-realm.json:ro
+      - ./keycloak/tls:/opt/keycloak/conf/tls:ro
+      - keycloak_sandbox_data:/opt/keycloak/data
+    networks:
+      - backend
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000'",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 35s
+    restart: "no"
+
+  fastapi:
+    env_file:
+      - ./env/.env.app
+      - ./env/.env.postgres
+      - ./env/.env.oidc-sandbox
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    # The sandbox intentionally runs the current local source without forcing
+    # a full image rebuild for each OIDC integration iteration.
+    volumes:
+      - ../src:/app
+
+volumes:
+  keycloak_sandbox_data:
