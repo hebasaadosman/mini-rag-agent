@@ -114,6 +114,7 @@ jobs:
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
           PROD_AUTH_JWT_SECRET: ${{ secrets.PROD_AUTH_JWT_SECRET }}
+          PROD_AUTH_SESSION_REDIS_URL: ${{ secrets.PROD_AUTH_SESSION_REDIS_URL }}
           PROD_ENV_APP: ${{ secrets.PROD_ENV_APP }}
           PROD_ENV_POSTGRES: ${{ secrets.PROD_ENV_POSTGRES }}
           PROD_ENV_GRAFANA: ${{ secrets.PROD_ENV_GRAFANA }}
@@ -125,6 +126,7 @@ jobs:
 
           REQUIRED_ENV_SECRETS=(
             PROD_AUTH_JWT_SECRET
+            PROD_AUTH_SESSION_REDIS_URL
             PROD_ENV_APP
             PROD_ENV_POSTGRES
             PROD_ENV_GRAFANA
@@ -146,6 +148,7 @@ jobs:
 
           PROD_ENV_APP_B64="$(encode_env_file "$PROD_ENV_APP")"
           PROD_AUTH_JWT_SECRET_B64="$(encode_env_file "$PROD_AUTH_JWT_SECRET")"
+          PROD_AUTH_SESSION_REDIS_URL_B64="$(encode_env_file "$PROD_AUTH_SESSION_REDIS_URL")"
           PROD_ENV_POSTGRES_B64="$(encode_env_file "$PROD_ENV_POSTGRES")"
           PROD_ENV_GRAFANA_B64="$(encode_env_file "$PROD_ENV_GRAFANA")"
           PROD_ENV_POSTGRES_EXPORTER_B64="$(encode_env_file "$PROD_ENV_POSTGRES_EXPORTER")"
@@ -154,6 +157,7 @@ jobs:
 
           for encoded_secret in \
             "$PROD_AUTH_JWT_SECRET_B64" \
+            "$PROD_AUTH_SESSION_REDIS_URL_B64" \
             "$PROD_ENV_APP_B64" \
             "$PROD_ENV_POSTGRES_B64" \
             "$PROD_ENV_GRAFANA_B64" \
@@ -170,6 +174,7 @@ jobs:
              GHCR_USERNAME='${GHCR_USERNAME}' \
              GHCR_TOKEN='${GHCR_TOKEN}' \
              PROD_AUTH_JWT_SECRET_B64='${PROD_AUTH_JWT_SECRET_B64}' \
+             PROD_AUTH_SESSION_REDIS_URL_B64='${PROD_AUTH_SESSION_REDIS_URL_B64}' \
              PROD_ENV_APP_B64='${PROD_ENV_APP_B64}' \
              PROD_ENV_POSTGRES_B64='${PROD_ENV_POSTGRES_B64}' \
              PROD_ENV_GRAFANA_B64='${PROD_ENV_GRAFANA_B64}' \
@@ -238,13 +243,16 @@ jobs:
           PROD_AUTH_JWT_SECRET="$(
             printf '%s' "$PROD_AUTH_JWT_SECRET_B64" | base64 --decode
           )"
+          PROD_AUTH_SESSION_REDIS_URL="$(
+            printf '%s' "$PROD_AUTH_SESSION_REDIS_URL_B64" | base64 --decode
+          )"
 
           if [ "${#PROD_AUTH_JWT_SECRET}" -lt 32 ]; then
             echo "PROD_AUTH_JWT_SECRET must contain at least 32 characters."
             exit 1
           fi
 
-          export PROD_AUTH_JWT_SECRET
+          export PROD_AUTH_JWT_SECRET PROD_AUTH_SESSION_REDIS_URL
 
           python3 - <<'PY'
           import json
@@ -278,6 +286,7 @@ jobs:
               "AUTH_ENABLED": "true",
               "AUTHZ_ENABLED": "true",
               "AUTH_JWT_SECRET": os.environ["PROD_AUTH_JWT_SECRET"],
+              "AUTH_SESSION_REDIS_URL": os.environ["PROD_AUTH_SESSION_REDIS_URL"],
               "CELERY_BROKER_URL": (
                   f"amqp://{quote(rabbitmq_user, safe='')}:"
                   f"{quote(rabbitmq_password, safe='')}@rabbitmq:5672/"
@@ -305,10 +314,11 @@ jobs:
           path.write_text("\n".join(rendered) + "\n")
           PY
 
-          unset PROD_AUTH_JWT_SECRET
+          unset PROD_AUTH_JWT_SECRET PROD_AUTH_SESSION_REDIS_URL
 
           unset \
             PROD_AUTH_JWT_SECRET_B64 \
+            PROD_AUTH_SESSION_REDIS_URL_B64 \
             PROD_ENV_APP_B64 \
             PROD_ENV_POSTGRES_B64 \
             PROD_ENV_GRAFANA_B64 \
