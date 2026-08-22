@@ -60,6 +60,10 @@ jobs:
               | tr -d '[:space:]\"'
           )"
 
+          # bff_oidc is the application default. An omitted setting must not
+          # weaken this gate or allow a browser-auth deployment by accident.
+          AUTH_MODE="${AUTH_MODE:-bff_oidc}"
+
           if [ "$AUTH_MODE" != "bff_oidc" ]; then
             echo "Production auth mode is not bff_oidc; OIDC preflight is not required."
             echo "auth_mode=${AUTH_MODE}" >> "$GITHUB_OUTPUT"
