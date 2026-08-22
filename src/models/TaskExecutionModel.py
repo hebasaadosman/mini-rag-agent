@@ -31,6 +31,9 @@ class TaskExecutionModel(BaseDataModel):
         operation: str,
         project_id: int,
         asset_id: int | None = None,
+        principal_id: str | None = None,
+        correlation_id: str | None = None,
+        request_metadata: dict[str, str] | None = None,
     ) -> TaskExecution | None:
         """
         Atomically creates and claims a new RUNNING execution.
@@ -52,6 +55,9 @@ class TaskExecutionModel(BaseDataModel):
                 operation=operation,
                 project_id=project_id,
                 asset_id=asset_id,
+                principal_id=principal_id,
+                correlation_id=correlation_id,
+                request_metadata=request_metadata,
                 status="RUNNING",
                 heartbeat_at=func.now(),
                 lease_expires_at=(

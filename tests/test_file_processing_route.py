@@ -34,10 +34,19 @@ class FileProcessingRouteTests(unittest.IsolatedAsyncioTestCase):
                 "task_id": "file-task-001",
             },
         )
-        delay.assert_called_once_with(
-            project_id=7,
-            asset_id=12,
-            chunk_size=500,
-            overlap_size=100,
-            do_reset=1,
+        delay.assert_called_once()
+        kwargs = delay.call_args.kwargs
+        self.assertEqual(kwargs["project_id"], 7)
+        self.assertEqual(kwargs["asset_id"], 12)
+        self.assertEqual(kwargs["chunk_size"], 500)
+        self.assertEqual(kwargs["overlap_size"], 100)
+        self.assertEqual(kwargs["do_reset"], 1)
+        self.assertIsNone(kwargs["principal_id"])
+        self.assertTrue(kwargs["correlation_id"])
+        self.assertEqual(
+            kwargs["request_metadata"],
+            {
+                "source": "api",
+                "route": "POST /api/v1/data/process/{project_id}",
+            },
         )

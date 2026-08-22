@@ -164,6 +164,7 @@ class KnowledgeAgentHITLTests(unittest.IsolatedAsyncioTestCase):
             llm_provider=_FakeLLMProvider(),
             tool_registry=registry,
             checkpointer=InMemorySaver(),
+            checkpoint_key="test-hitl-default",
         )
 
     async def test_graph_pauses_and_resumes_clarification(self):
@@ -305,6 +306,7 @@ class KnowledgeAgentHITLTests(unittest.IsolatedAsyncioTestCase):
             llm_provider=_StructuredClarificationLLMProvider(),
             tool_registry=registry,
             checkpointer=InMemorySaver(),
+            checkpoint_key="test-hitl-structured",
         )
 
         interrupted = await graph.run(

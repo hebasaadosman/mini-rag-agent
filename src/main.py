@@ -2,7 +2,11 @@ from fastapi import FastAPI
 from models.ChunkModel import ChunkModel
 from observability.langsmith import configure_langsmith
 from routes import auth, base,data,nlp,projects,workflow
-from helpers.config import get_settings, Settings
+from helpers.config import (
+    get_settings,
+    Settings,
+    ensure_production_authorization_enabled,
+)
 from stores.llm.LLMProviderFactory import LLMProviderFactory
 from stores.vectordb.VectorDBProviderFactory import VectorDBProviderFactory
 from stores.llm.templates.template_parser import TemplateParser
@@ -14,6 +18,7 @@ from controllers import KnowledgeAgentController, MultiAgentController
 from models.AssetModel import AssetModel
 from models.ProjectModel import ProjectModel
 from models.ProjectMembershipModel import ProjectMembershipModel
+from models.ConversationThreadModel import ConversationThreadModel
 from models.AuditEventModel import AuditEventModel
 from authorization import ProjectAuthorizer
 from auditing.audit_logger import DatabaseAuditLogger
@@ -27,6 +32,7 @@ from persistence.checkpointing import (
 from utils.async_keyed_lock import PostgresAdvisoryKeyedLock
 from infrastructure.email import create_send_email_tool
 from authentication import OIDCClient, OIDCConfiguration, RedisSessionStore
+from authentication.session_url import resolve_auth_session_redis_url
 from redis import asyncio as redis_asyncio
 settings = get_settings()
 
@@ -35,6 +41,7 @@ app = FastAPI()
 
 @app.on_event("startup")
 async def startup_db_client():
+    ensure_production_authorization_enabled(settings)
 
     # app.db_mongo_conn = AsyncIOMotorClient(settings.MONGODB_URI)
     postgres_conn = f"postgresql+asyncpg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
@@ -42,10 +49,9 @@ async def startup_db_client():
     app.db_client = sessionmaker(app.pg_engine, class_=AsyncSession, expire_on_commit=False)
 
     if settings.AUTH_ENABLED and settings.AUTH_MODE.strip().lower() == "bff_oidc":
-        if not settings.AUTH_SESSION_REDIS_URL:
-            raise RuntimeError("AUTH_SESSION_REDIS_URL is required for bff_oidc authentication.")
+        auth_session_redis_url = resolve_auth_session_redis_url(settings)
         app.auth_redis = redis_asyncio.from_url(
-            settings.AUTH_SESSION_REDIS_URL,
+            auth_session_redis_url,
             decode_responses=True,
         )
         await app.auth_redis.ping()
@@ -79,6 +85,9 @@ async def startup_db_client():
         db_client=app.db_client,
     )
     app.project_membership_model = await ProjectMembershipModel.create_instance(
+        db_client=app.db_client,
+    )
+    app.conversation_thread_model = await ConversationThreadModel.create_instance(
         db_client=app.db_client,
     )
     audit_event_model = await AuditEventModel.create_instance(

@@ -1,7 +1,7 @@
 
 from typing import Annotated
 
-from fastapi import FastAPI,Request, APIRouter,Depends,UploadFile,status,Request
+from fastapi import APIRouter, Depends, Request, UploadFile, status
 from fastapi.responses import JSONResponse
 import aiofiles
 from helpers.config import get_settings, Settings
@@ -19,6 +19,7 @@ from controllers import NLPController
 from tasks.file_processing import process_project_files
 from authorization import ProjectAccess, ProjectPermission
 from authorization.dependencies import require_project_permission
+from auditing.correlation import background_request_metadata, request_correlation_id
 
 logger = logging.getLogger("uvicorn.error")
 data_controller = DataController()
@@ -37,11 +38,7 @@ ProjectWriteAccess = Annotated[
 async def upload_data(request: Request, project_id: int, file: UploadFile, app_settings: Settings = Depends(get_settings), access: ProjectWriteAccess = None):
 
     project_model = await ProjectModel.create_instance(request.app.db_client) 
-    project = (
-        await project_model.get_project_by_id(project_id)
-        if access and access.enforced
-        else await project_model.get_project_or_create_one(project_id=project_id)
-    )
+    project = await project_model.get_project_by_id(project_id)
     if project is None:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -95,6 +92,11 @@ async def process_endpoint(request: Request, project_id: int, process_request: P
         chunk_size=chunk_size,
         overlap_size=overlap_size,
         do_reset=do_reset,
+        principal_id=_.principal_id if _ else None,
+        correlation_id=request_correlation_id(request),
+        request_metadata=background_request_metadata(
+            route="POST /api/v1/data/process/{project_id}"
+        ),
     )
 
    return JSONResponse(

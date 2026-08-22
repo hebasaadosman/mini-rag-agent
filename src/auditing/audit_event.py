@@ -11,6 +11,7 @@ class AuditAction(StrEnum):
     PROJECT_ACCESS = "project.access"
     PROJECT_CREATED = "project.created"
     PROJECT_MEMBER_ROLE_GRANTED = "project.member_role_granted"
+    PROJECT_MEMBER_REVOKED = "project.member_revoked"
 
 
 class AuditOutcome(StrEnum):

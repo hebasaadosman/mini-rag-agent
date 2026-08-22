@@ -10,6 +10,8 @@ from controllers import NLPController
 from models import ResponseSignals
 from models.ChunkModel import ChunkModel
 from models.ProjectModel import ProjectModel
+from models.TaskExecutionModel import TaskExecutionModel
+from utils.idempotency import generate_idempotency_key
 
 logger = logging.getLogger(__name__)
 
@@ -59,12 +61,18 @@ def index_project_task(
     self,
     project_id: int,
     do_reset: int = 0,
+    principal_id: str | None = None,
+    correlation_id: str | None = None,
+    request_metadata: dict[str, str] | None = None,
 ) -> dict:
     return asyncio.run(
         _index_project(
             task_instance=self,
             project_id=project_id,
             do_reset=do_reset,
+            principal_id=principal_id,
+            correlation_id=correlation_id,
+            request_metadata=request_metadata,
         )
     )
 
@@ -73,9 +81,14 @@ async def _index_project(
     task_instance,
     project_id: int,
     do_reset: int,
+    principal_id: str | None,
+    correlation_id: str | None,
+    request_metadata: dict[str, str] | None,
 ) -> dict:
     db_engine = None
     vectordb_client = None
+    execution_model = None
+    execution = None
 
     try:
         (
@@ -94,6 +107,9 @@ async def _index_project(
         )
 
         chunk_model = await ChunkModel.create_instance(
+            db_client=db_client
+        )
+        execution_model = await TaskExecutionModel.create_instance(
             db_client=db_client
         )
 
@@ -128,6 +144,29 @@ async def _index_project(
         if total_chunks == 0:
             raise ValueError(
                 f"No chunks found for project_id={project.project_id}"
+            )
+
+        from uuid import UUID
+
+        celery_task_id = UUID(str(task_instance.request.id))
+        execution = await execution_model.try_start_execution(
+            idempotency_key=generate_idempotency_key(
+                operation="INDEX_PROJECT",
+                project_id=project.project_id,
+                do_reset=do_reset,
+                celery_task_id=str(celery_task_id),
+            ),
+            celery_task_id=celery_task_id,
+            operation="INDEX_PROJECT",
+            project_id=project.project_id,
+            principal_id=principal_id,
+            correlation_id=correlation_id,
+            request_metadata=request_metadata,
+        )
+
+        if execution is None:
+            raise RuntimeError(
+                "An equivalent project indexing execution already exists."
             )
 
         # الـ reset يحصل مرة واحدة فقط قبل بداية الـ batches.
@@ -210,7 +249,7 @@ async def _index_project(
                 INDEX_DELAY_BETWEEN_BATCHES_SECONDS
             )
 
-        return {
+        final_result = {
             "signal": (
                 ResponseSignals
                 .INSERT_INTO_VECTORDB_SUCCESS
@@ -221,12 +260,25 @@ async def _index_project(
             "total_chunks": total_chunks,
             "collection_name": collection_name,
         }
+        await execution_model.mark_success(
+            execution_id=execution.execution_id,
+            result_data=final_result,
+        )
+        return final_result
 
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "Indexing task failed. project_id=%s",
             project_id,
         )
+        if execution is not None and execution_model is not None:
+            try:
+                await execution_model.mark_failed(
+                    execution_id=execution.execution_id,
+                    error_message=str(exc),
+                )
+            except Exception:
+                logger.exception("Could not mark indexing execution as failed.")
         raise
 
     finally:

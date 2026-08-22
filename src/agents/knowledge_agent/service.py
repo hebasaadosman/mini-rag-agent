@@ -19,6 +19,7 @@ class KnowledgeAgent:
         llm_provider,
         tool_registry,
         checkpointer=None,
+        checkpoint_key: str | None = None,
         max_iterations: int = 5,
         max_memory_messages: int = 40,
     ) -> None:
@@ -26,6 +27,7 @@ class KnowledgeAgent:
             KnowledgeAgentGraph(
                 project_id=project_id,
                 checkpointer=checkpointer,
+                checkpoint_key=checkpoint_key,
                 llm_provider=llm_provider,
                 tool_registry=tool_registry,
                 max_iterations=max_iterations,

@@ -1,5 +1,15 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List, Optional
+
+
+def ensure_production_authorization_enabled(settings: "Settings") -> None:
+    """Fail closed when a production process would start without authz."""
+    if settings.APP_ENV.strip().lower() in {"production", "prod"} and not settings.AUTHZ_ENABLED:
+        raise RuntimeError(
+            "AUTHZ_ENABLED must be true when APP_ENV is production."
+        )
+
+
 class Settings(BaseSettings):
 
 

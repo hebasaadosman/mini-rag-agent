@@ -52,6 +52,7 @@ class KnowledgeAgentController(BaseController):
         project_id: int,
         thread_id: str,
         message: str,
+        checkpoint_key: str | None = None,
     ) -> KnowledgeAgentResponse:
         normalized_message = message.strip()
         normalized_thread_id = thread_id.strip()
@@ -96,7 +97,7 @@ class KnowledgeAgentController(BaseController):
                 ),
             )
 
-        agent = self.build_agent(project_id=project_id)
+        agent = self.build_agent(project_id=project_id, checkpoint_key=checkpoint_key)
 
         try:
             result = await agent.run(
@@ -124,6 +125,7 @@ class KnowledgeAgentController(BaseController):
         project_id: int,
         thread_id: str,
         response: str,
+        checkpoint_key: str | None = None,
     ) -> KnowledgeAgentResponse:
         normalized_thread_id = thread_id.strip()
         normalized_response = response.strip()
@@ -145,7 +147,7 @@ class KnowledgeAgentController(BaseController):
                 error=f"Project with ID {project_id} was not found.",
             )
 
-        agent = self.build_agent(project_id=project_id)
+        agent = self.build_agent(project_id=project_id, checkpoint_key=checkpoint_key)
         try:
             result = await agent.resume(
                 thread_id=normalized_thread_id,
@@ -170,6 +172,7 @@ class KnowledgeAgentController(BaseController):
         project_id: int,
         thread_id: str,
         message: str,
+        checkpoint_key: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         normalized_message = message.strip()
         normalized_thread_id = thread_id.strip()
@@ -184,7 +187,7 @@ class KnowledgeAgentController(BaseController):
             yield self._terminal_stream_event(validation_error)
             return
 
-        agent = self.build_agent(project_id=project_id)
+        agent = self.build_agent(project_id=project_id, checkpoint_key=checkpoint_key)
         yield {
             "event": "started",
             "data": {
@@ -224,6 +227,7 @@ class KnowledgeAgentController(BaseController):
         project_id: int,
         thread_id: str,
         response: str,
+        checkpoint_key: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         normalized_thread_id = thread_id.strip()
         normalized_response = response.strip()
@@ -238,7 +242,7 @@ class KnowledgeAgentController(BaseController):
             yield self._terminal_stream_event(validation_error)
             return
 
-        agent = self.build_agent(project_id=project_id)
+        agent = self.build_agent(project_id=project_id, checkpoint_key=checkpoint_key)
         yield {
             "event": "started",
             "data": {
@@ -276,6 +280,7 @@ class KnowledgeAgentController(BaseController):
         *,
         project_id: int,
         thread_id: str,
+        checkpoint_key: str | None = None,
     ) -> KnowledgeAgentMemoryResponse:
         normalized_thread_id = thread_id.strip()
         if not normalized_thread_id:
@@ -297,7 +302,7 @@ class KnowledgeAgentController(BaseController):
                 error=f"Project with ID {project_id} was not found.",
             )
 
-        agent = self.build_agent(project_id=project_id)
+        agent = self.build_agent(project_id=project_id, checkpoint_key=checkpoint_key)
         memory = await agent.get_memory(thread_id=normalized_thread_id)
         return KnowledgeAgentMemoryResponse(
             success=True,
@@ -311,6 +316,7 @@ class KnowledgeAgentController(BaseController):
         *,
         project_id: int,
         thread_id: str,
+        checkpoint_key: str | None = None,
     ) -> KnowledgeAgentMemoryResponse:
         normalized_thread_id = thread_id.strip()
         if not normalized_thread_id:
@@ -332,7 +338,7 @@ class KnowledgeAgentController(BaseController):
                 error=f"Project with ID {project_id} was not found.",
             )
 
-        agent = self.build_agent(project_id=project_id)
+        agent = self.build_agent(project_id=project_id, checkpoint_key=checkpoint_key)
         before = await agent.get_memory(thread_id=normalized_thread_id)
         await agent.clear_memory(thread_id=normalized_thread_id)
         return KnowledgeAgentMemoryResponse(
@@ -422,7 +428,9 @@ class KnowledgeAgentController(BaseController):
             "data": response.model_dump(mode="json"),
         }
 
-    def build_agent(self, project_id: int) -> KnowledgeAgent:
+    def build_agent(
+        self, project_id: int, checkpoint_key: str | None = None
+    ) -> KnowledgeAgent:
         """Build the project-scoped core used by direct and routed chat."""
 
         return KnowledgeAgent(
@@ -431,6 +439,7 @@ class KnowledgeAgentController(BaseController):
             tool_registry=self._build_tool_registry(project_id=project_id),
             max_iterations=self.max_iterations,
             checkpointer=self.checkpointer,
+            checkpoint_key=checkpoint_key,
             max_memory_messages=self.max_memory_messages,
         )
 

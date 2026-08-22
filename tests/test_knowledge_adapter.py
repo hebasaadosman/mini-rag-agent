@@ -53,8 +53,8 @@ class _Factory:
         self.agent = agent
         self.project_ids = []
 
-    def __call__(self, project_id):
-        self.project_ids.append(project_id)
+    def __call__(self, project_id, checkpoint_key):
+        self.project_ids.append((project_id, checkpoint_key))
         return self.agent
 
 
@@ -63,6 +63,7 @@ def _state(message="Summarize the report"):
         message,
         project_id=7,
         thread_id="knowledge-thread-1",
+        checkpoint_key="server-checkpoint-knowledge-thread-1",
     )
 
 
@@ -129,7 +130,10 @@ class KnowledgeSpecialistAdapterTests(unittest.IsolatedAsyncioTestCase):
 
         update = await adapter.run(_state())
 
-        self.assertEqual(factory.project_ids, [7])
+        self.assertEqual(
+            factory.project_ids,
+            [(7, "server-checkpoint-knowledge-thread-1")],
+        )
         self.assertEqual(
             core.run_calls,
             [
@@ -279,7 +283,10 @@ class KnowledgeSpecialistAdapterTests(unittest.IsolatedAsyncioTestCase):
 
         await adapter.cancel_pending(_state())
 
-        self.assertEqual(factory.project_ids, [7])
+        self.assertEqual(
+            factory.project_ids,
+            [(7, "server-checkpoint-knowledge-thread-1")],
+        )
         self.assertEqual(
             core.clear_calls,
             [{"thread_id": "knowledge-thread-1"}],
@@ -382,6 +389,18 @@ class KnowledgeSpecialistAdapterTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(update["task_status"], TaskStatus.FAILED)
         self.assertIn("project_id", update["error"])
+        self.assertEqual(factory.project_ids, [])
+
+    async def test_missing_server_checkpoint_key_is_rejected_before_factory(self):
+        factory = _Factory(_FakeKnowledgeAgent(run_result={}))
+        adapter = KnowledgeSpecialistAdapter(agent_factory=factory)
+        state = _state()
+        state.pop("checkpoint_key")
+
+        update = await adapter.run(state)
+
+        self.assertEqual(update["task_status"], TaskStatus.FAILED)
+        self.assertIn("checkpoint key", update["error"])
         self.assertEqual(factory.project_ids, [])
 
 

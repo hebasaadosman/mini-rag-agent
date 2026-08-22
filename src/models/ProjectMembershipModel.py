@@ -49,3 +49,32 @@ class ProjectMembershipModel(BaseDataModel):
 
             await session.refresh(membership)
             return membership
+
+    async def list_members(self, *, project_id: int) -> list[ProjectMembership]:
+        async with self.db_client() as session:
+            result = await session.execute(
+                select(ProjectMembership)
+                .where(ProjectMembership.project_id == project_id)
+                .order_by(ProjectMembership.created_at, ProjectMembership.membership_id)
+            )
+            return list(result.scalars().all())
+
+    async def revoke_role(
+        self,
+        *,
+        project_id: int,
+        principal_id: str,
+    ) -> ProjectMembership | None:
+        async with self.db_client() as session:
+            async with session.begin():
+                result = await session.execute(
+                    select(ProjectMembership).where(
+                        ProjectMembership.project_id == project_id,
+                        ProjectMembership.principal_id == principal_id,
+                    )
+                )
+                membership = result.scalar_one_or_none()
+                if membership is None:
+                    return None
+                await session.delete(membership)
+            return membership

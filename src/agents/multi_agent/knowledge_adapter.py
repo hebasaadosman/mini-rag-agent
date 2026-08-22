@@ -26,7 +26,7 @@ class KnowledgeAgentCore(Protocol):
     async def clear_memory(self, *, thread_id: str) -> None: ...
 
 
-KnowledgeAgentFactory = Callable[[int], KnowledgeAgentCore]
+KnowledgeAgentFactory = Callable[[int, str], KnowledgeAgentCore]
 
 
 class KnowledgeSpecialistAdapter:
@@ -64,13 +64,13 @@ class KnowledgeSpecialistAdapter:
         if isinstance(context, dict):
             return context
 
-        project_id, thread_id = context
+        project_id, thread_id, checkpoint_key = context
         user_message = str(state.get("user_message") or "").strip()
         if not user_message:
             return self._failure("user_message cannot be blank.")
 
         try:
-            agent = self._agent_factory(project_id)
+            agent = self._agent_factory(project_id, checkpoint_key)
             result = await agent.run(
                 thread_id=thread_id,
                 project_id=project_id,
@@ -109,9 +109,9 @@ class KnowledgeSpecialistAdapter:
                 "pending_user_message cannot be blank when resuming."
             )
 
-        project_id, thread_id = context
+        project_id, thread_id, checkpoint_key = context
         try:
-            agent = self._agent_factory(project_id)
+            agent = self._agent_factory(project_id, checkpoint_key)
             result = await agent.resume(
                 thread_id=thread_id,
                 response=response,
@@ -136,8 +136,8 @@ class KnowledgeSpecialistAdapter:
                 str(context.get("error") or "Invalid request context.")
             )
 
-        project_id, thread_id = context
-        agent = self._agent_factory(project_id)
+        project_id, thread_id, checkpoint_key = context
+        agent = self._agent_factory(project_id, checkpoint_key)
         await agent.clear_memory(thread_id=thread_id)
 
     def _map_result(
@@ -365,7 +365,7 @@ class KnowledgeSpecialistAdapter:
     @staticmethod
     def _request_context(
         state: MultiAgentState,
-    ) -> tuple[int, str] | dict[str, Any]:
+    ) -> tuple[int, str, str] | dict[str, Any]:
         project_id = state.get("project_id")
         if (
             not isinstance(project_id, int)
@@ -381,7 +381,14 @@ class KnowledgeSpecialistAdapter:
             return KnowledgeSpecialistAdapter._failure(
                 "thread_id must contain between 1 and 255 characters."
             )
-        return project_id, thread_id
+        checkpoint_key = str(state.get("checkpoint_key") or "").strip()
+        if not checkpoint_key or len(checkpoint_key) > 255:
+            # The public thread_id is transport metadata only.  A specialist
+            # must never turn it into its own LangGraph checkpoint namespace.
+            return KnowledgeSpecialistAdapter._failure(
+                "A server checkpoint key is required for Knowledge execution."
+            )
+        return project_id, thread_id, checkpoint_key
 
     @staticmethod
     def _is_knowledge_resume(state: MultiAgentState) -> bool:

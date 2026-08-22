@@ -34,6 +34,9 @@ def process_project_files(
     chunk_size: int,
     overlap_size: int,
     do_reset: int,
+    principal_id: str | None = None,
+    correlation_id: str | None = None,
+    request_metadata: dict[str, str] | None = None,
 ):
     return asyncio.run(
         _process_project_files(
@@ -43,6 +46,9 @@ def process_project_files(
             chunk_size=chunk_size,
             overlap_size=overlap_size,
             do_reset=do_reset,
+            principal_id=principal_id,
+            correlation_id=correlation_id,
+            request_metadata=request_metadata,
         )
     )
 
@@ -55,6 +61,9 @@ async def _process_project_files(
     chunk_size: int,
     overlap_size: int,
     do_reset: int,
+    principal_id: str | None,
+    correlation_id: str | None,
+    request_metadata: dict[str, str] | None,
 ):
     db_engine = None
     vectordb_client = None
@@ -89,7 +98,7 @@ async def _process_project_files(
             db_client=db_client
         )
 
-        project = await project_model.get_project_or_create_one(
+        project = await project_model.get_project_by_id(
             project_id=project_id
         )
 
@@ -218,6 +227,9 @@ async def _process_project_files(
                     if asset_id is not None
                     else None
                 ),
+                principal_id=principal_id,
+                correlation_id=correlation_id,
+                request_metadata=request_metadata,
             )
         )
 

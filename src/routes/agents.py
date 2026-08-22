@@ -1,6 +1,7 @@
 from fastapi import (
     APIRouter,
     Depends,
+    HTTPException,
     Query,
     Request,
     status,
@@ -22,6 +23,10 @@ from agents.multi_agent.api_schemas import (
 )
 from controllers import KnowledgeAgentController
 from models.ProjectModel import ProjectModel
+from models.ConversationThreadModel import (
+    ConversationThreadAccess,
+    ConversationThreadAccessDenied,
+)
 from authorization import ProjectAccess, ProjectPermission
 from authorization.dependencies import require_project_permission
 
@@ -41,6 +46,43 @@ ProjectWriteAccess = Annotated[
 ]
 
 
+async def _thread_access(
+    *,
+    request: Request,
+    project_access: ProjectAccess,
+    thread_id: str,
+    allow_create: bool,
+) -> ConversationThreadAccess | None:
+    """Resolve a private thread only after project authorization succeeds."""
+    if not project_access.enforced:
+        # Explicitly local-only compatibility for existing unauthenticated
+        # development runs. Production startup rejects disabled authorization.
+        return None
+    model = getattr(request.app, "conversation_thread_model", None)
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Conversation authorization is not configured.",
+        )
+    try:
+        if allow_create:
+            return await model.claim_or_require_owner(
+                project_id=project_access.project_id,
+                thread_id=thread_id,
+                principal_id=project_access.principal_id,
+            )
+        return await model.require_owner(
+            project_id=project_access.project_id,
+            thread_id=thread_id,
+            principal_id=project_access.principal_id,
+        )
+    except ConversationThreadAccessDenied:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this conversation.",
+        ) from None
+
+
 @agents_router.post(
     "/{project_id}/chat",
     response_model=MultiAgentResponse,
@@ -51,16 +93,25 @@ async def chat_with_multi_agent(
     request: Request,
     project_id: int,
     payload: MultiAgentChatRequest,
-    _: ProjectReadAccess,
+    project_access: ProjectReadAccess,
 ):
     lock_key = (
         f"multi-agent:{project_id}:{payload.thread_id}"
     )
     async with request.app.agent_thread_locks.acquire(lock_key):
+        thread_access = await _thread_access(
+            request=request,
+            project_access=project_access,
+            thread_id=payload.thread_id,
+            allow_create=True,
+        )
         return await request.app.multi_agent_controller.chat(
             project_id=project_id,
             thread_id=payload.thread_id,
             message=payload.message,
+            checkpoint_key=(
+                thread_access.checkpoint_key if thread_access else None
+            ),
         )
 
 
@@ -74,16 +125,25 @@ async def resume_multi_agent_chat(
     request: Request,
     project_id: int,
     payload: MultiAgentResumeRequest,
-    _: ProjectReadAccess,
+    project_access: ProjectReadAccess,
 ):
     lock_key = (
         f"multi-agent:{project_id}:{payload.thread_id}"
     )
     async with request.app.agent_thread_locks.acquire(lock_key):
+        thread_access = await _thread_access(
+            request=request,
+            project_access=project_access,
+            thread_id=payload.thread_id,
+            allow_create=False,
+        )
         return await request.app.multi_agent_controller.resume(
             project_id=project_id,
             thread_id=payload.thread_id,
             response=payload.response,
+            checkpoint_key=(
+                thread_access.checkpoint_key if thread_access else None
+            ),
         )
 
 
@@ -96,7 +156,7 @@ async def chat_with_knowledge_agent(
     request: Request,
     project_id: int,
     payload: KnowledgeAgentRequest,
-    _: ProjectReadAccess,
+    project_access: ProjectReadAccess,
 ):
     project_model = (
         await ProjectModel.create_instance(
@@ -119,10 +179,19 @@ async def chat_with_knowledge_agent(
 
     lock_key = f"{project_id}:{payload.thread_id.strip()}"
     async with request.app.agent_thread_locks.acquire(lock_key):
+        thread_access = await _thread_access(
+            request=request,
+            project_access=project_access,
+            thread_id=payload.thread_id,
+            allow_create=True,
+        )
         return await controller.chat(
             project_id=project_id,
             message=payload.message,
             thread_id=payload.thread_id,
+            checkpoint_key=(
+                thread_access.checkpoint_key if thread_access else None
+            ),
         )
 
 
@@ -145,7 +214,7 @@ async def stream_knowledge_agent_chat(
     request: Request,
     project_id: int,
     payload: KnowledgeAgentRequest,
-    _: ProjectReadAccess,
+    project_access: ProjectReadAccess,
 ):
     project_model = await ProjectModel.create_instance(
         db_client=request.app.db_client,
@@ -161,10 +230,19 @@ async def stream_knowledge_agent_chat(
 
     async def event_generator():
         async with request.app.agent_thread_locks.acquire(lock_key):
+            thread_access = await _thread_access(
+                request=request,
+                project_access=project_access,
+                thread_id=payload.thread_id,
+                allow_create=True,
+            )
             events = controller.chat_stream(
                 project_id=project_id,
                 message=payload.message,
                 thread_id=payload.thread_id,
+                checkpoint_key=(
+                    thread_access.checkpoint_key if thread_access else None
+                ),
             )
             async for event in with_heartbeat(events):
                 if await request.is_disconnected():
@@ -241,7 +319,7 @@ async def resume_knowledge_agent(
     request: Request,
     project_id: int,
     payload: KnowledgeAgentResumeRequest,
-    _: ProjectReadAccess,
+    project_access: ProjectReadAccess,
 ):
     project_model = await ProjectModel.create_instance(
         db_client=request.app.db_client,
@@ -256,10 +334,19 @@ async def resume_knowledge_agent(
 
     lock_key = f"{project_id}:{payload.thread_id.strip()}"
     async with request.app.agent_thread_locks.acquire(lock_key):
+        thread_access = await _thread_access(
+            request=request,
+            project_access=project_access,
+            thread_id=payload.thread_id,
+            allow_create=False,
+        )
         return await controller.resume(
             project_id=project_id,
             thread_id=payload.thread_id,
             response=payload.response,
+            checkpoint_key=(
+                thread_access.checkpoint_key if thread_access else None
+            ),
         )
 
 
@@ -282,7 +369,7 @@ async def stream_resumed_knowledge_agent_chat(
     request: Request,
     project_id: int,
     payload: KnowledgeAgentResumeRequest,
-    _: ProjectReadAccess,
+    project_access: ProjectReadAccess,
 ):
     project_model = await ProjectModel.create_instance(
         db_client=request.app.db_client,
@@ -298,10 +385,19 @@ async def stream_resumed_knowledge_agent_chat(
 
     async def event_generator():
         async with request.app.agent_thread_locks.acquire(lock_key):
+            thread_access = await _thread_access(
+                request=request,
+                project_access=project_access,
+                thread_id=payload.thread_id,
+                allow_create=False,
+            )
             events = controller.resume_stream(
                 project_id=project_id,
                 thread_id=payload.thread_id,
                 response=payload.response,
+                checkpoint_key=(
+                    thread_access.checkpoint_key if thread_access else None
+                ),
             )
             async for event in with_heartbeat(events):
                 if await request.is_disconnected():
@@ -329,7 +425,7 @@ async def get_knowledge_agent_memory(
     request: Request,
     project_id: int,
     thread_id: str,
-    _: ProjectReadAccess,
+    project_access: ProjectReadAccess,
 ):
     project_model = await ProjectModel.create_instance(
         db_client=request.app.db_client,
@@ -341,9 +437,16 @@ async def get_knowledge_agent_memory(
         checkpointer=request.app.checkpointer,
         max_memory_messages=request.app.agent_memory_max_messages,
     )
+    thread_access = await _thread_access(
+        request=request,
+        project_access=project_access,
+        thread_id=thread_id,
+        allow_create=False,
+    )
     return await controller.get_memory(
         project_id=project_id,
         thread_id=thread_id,
+        checkpoint_key=(thread_access.checkpoint_key if thread_access else None),
     )
 
 
@@ -355,7 +458,7 @@ async def clear_knowledge_agent_memory(
     request: Request,
     project_id: int,
     thread_id: str,
-    _: ProjectWriteAccess,
+    project_access: ProjectWriteAccess,
     confirm: bool = Query(
         default=False,
         description=(
@@ -376,9 +479,16 @@ async def clear_knowledge_agent_memory(
     )
 
     if not confirm:
+        thread_access = await _thread_access(
+            request=request,
+            project_access=project_access,
+            thread_id=thread_id,
+            allow_create=False,
+        )
         memory = await controller.get_memory(
             project_id=project_id,
             thread_id=thread_id,
+            checkpoint_key=(thread_access.checkpoint_key if thread_access else None),
         )
         if not memory.success:
             return memory
@@ -397,7 +507,14 @@ async def clear_knowledge_agent_memory(
 
     lock_key = f"{project_id}:{thread_id.strip()}"
     async with request.app.agent_thread_locks.acquire(lock_key):
+        thread_access = await _thread_access(
+            request=request,
+            project_access=project_access,
+            thread_id=thread_id,
+            allow_create=False,
+        )
         return await controller.clear_memory(
             project_id=project_id,
             thread_id=thread_id,
+            checkpoint_key=(thread_access.checkpoint_key if thread_access else None),
         )

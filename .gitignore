@@ -73,6 +73,7 @@ src/assets/files/
 src/assets/database/
 docker/grafana-data/
 docker/prometheus-data/
+docker/keycloak/tls/
 
 # Generated evaluation reports
 src/evals/**/reports/*.json

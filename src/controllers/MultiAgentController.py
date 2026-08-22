@@ -26,6 +26,7 @@ class MultiAgentController:
         project_id: int,
         thread_id: str,
         message: str,
+        checkpoint_key: str | None = None,
     ) -> MultiAgentResponse:
         validation = await self._validate_request(
             project_id=project_id,
@@ -41,6 +42,7 @@ class MultiAgentController:
                 project_id=project_id,
                 thread_id=thread_id.strip(),
                 message=message.strip(),
+                checkpoint_key=checkpoint_key,
             )
         except ValueError as exc:
             return self._failure(project_id, thread_id, str(exc))
@@ -58,6 +60,7 @@ class MultiAgentController:
         project_id: int,
         thread_id: str,
         response: str,
+        checkpoint_key: str | None = None,
     ) -> MultiAgentResponse:
         validation = await self._validate_request(
             project_id=project_id,
@@ -73,6 +76,7 @@ class MultiAgentController:
                 project_id=project_id,
                 thread_id=thread_id.strip(),
                 response=response.strip(),
+                checkpoint_key=checkpoint_key,
             )
         except ValueError as exc:
             return self._failure(project_id, thread_id, str(exc))

@@ -14,10 +14,48 @@ def _runtime(*, dependencies=None, checkpointer=True):
         **dependencies,
         checkpointer=InMemorySaver() if checkpointer else None,
     )
-    return MultiAgentRuntime(graph), graph, dependencies
+    return _TestMultiAgentRuntime(graph), graph, dependencies
+
+
+class _TestMultiAgentRuntime(MultiAgentRuntime):
+    """Keep legacy-focused runtime tests explicit about server checkpointing."""
+
+    async def chat(self, **kwargs):
+        kwargs.setdefault("checkpoint_key", f"test:{kwargs.get('thread_id')}")
+        return await super().chat(**kwargs)
+
+    async def resume(self, **kwargs):
+        kwargs.setdefault("checkpoint_key", f"test:{kwargs.get('thread_id')}")
+        return await super().resume(**kwargs)
 
 
 class MultiAgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
+    def test_checkpoint_key_not_public_thread_id_controls_checkpoint_namespace(self):
+        config = MultiAgentRuntime._build_config(
+            "client-visible-thread",
+            "server-generated-checkpoint-key",
+        )
+
+        self.assertEqual(
+            config["configurable"]["thread_id"],
+            "multi-agent:server-generated-checkpoint-key",
+        )
+        self.assertEqual(
+            config["metadata"]["thread_id"],
+            "client-visible-thread",
+        )
+
+    async def test_persistent_runtime_rejects_client_thread_id_as_checkpoint_key(self):
+        dependencies = _dependencies()
+        graph = MultiAgentGraph(
+            **dependencies,
+            checkpointer=InMemorySaver(),
+        )
+        runtime = MultiAgentRuntime(graph)
+
+        with self.assertRaisesRegex(ValueError, "server-generated checkpoint_key"):
+            await runtime.chat(thread_id="client-thread", message="Hello")
+
     async def test_chat_runs_the_public_workflow(self):
         runtime, _, dependencies = _runtime()
 
