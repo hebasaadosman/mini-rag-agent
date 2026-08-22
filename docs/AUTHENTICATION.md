@@ -64,3 +64,23 @@ to `AUTH_SESSION_REDIS_URL` in the server-side `docker/env/.env.app` file and
 must point to the dedicated session Redis database or namespace (normally
 database `1`, separate from Celery's result database `0`). The workflow fails
 before connecting to the server when the secret is missing.
+
+## Production deployment preflight
+
+Before an image is built or deployed, GitHub Actions reads `AUTH_MODE` from
+the protected `PROD_ENV_APP` secret. When its value is `bff_oidc`, the
+deployment is rejected unless the session Redis URL and the following
+protected OIDC settings are present:
+
+- `PROD_OIDC_ISSUER`
+- `PROD_OIDC_CLIENT_ID`
+- `PROD_OIDC_REDIRECT_URI`
+- `PROD_OIDC_AUTHORIZATION_ENDPOINT`
+- `PROD_OIDC_TOKEN_ENDPOINT`
+- `PROD_OIDC_JWKS_URL`
+
+All provider and callback URLs must use HTTPS. The repository's production
+Nginx configuration must also contain a TLS listener (`listen 443 ssl`) before
+the deployment can proceed. This intentionally blocks BFF/OIDC deployment on
+the current HTTP-only production endpoint; Keycloak remains a local/integration
+sandbox until a real production IdP and HTTPS endpoint are available.

@@ -23,12 +23,93 @@ env:
   DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
+  auth-preflight:
+    name: Validate production authentication prerequisites
+    runs-on: ubuntu-latest
+    environment: production
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    outputs:
+      auth_mode: ${{ steps.preflight.outputs.auth_mode }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Reject incomplete BFF/OIDC production configuration
+        id: preflight
+        shell: bash
+        env:
+          PROD_ENV_APP: ${{ secrets.PROD_ENV_APP }}
+          PROD_AUTH_SESSION_REDIS_URL: ${{ secrets.PROD_AUTH_SESSION_REDIS_URL }}
+          PROD_OIDC_ISSUER: ${{ secrets.PROD_OIDC_ISSUER }}
+          PROD_OIDC_CLIENT_ID: ${{ secrets.PROD_OIDC_CLIENT_ID }}
+          PROD_OIDC_REDIRECT_URI: ${{ secrets.PROD_OIDC_REDIRECT_URI }}
+          PROD_OIDC_AUTHORIZATION_ENDPOINT: ${{ secrets.PROD_OIDC_AUTHORIZATION_ENDPOINT }}
+          PROD_OIDC_TOKEN_ENDPOINT: ${{ secrets.PROD_OIDC_TOKEN_ENDPOINT }}
+          PROD_OIDC_JWKS_URL: ${{ secrets.PROD_OIDC_JWKS_URL }}
+        run: |
+          set -Eeuo pipefail
+
+          AUTH_MODE="$(
+            printf '%s\n' "$PROD_ENV_APP" \
+              | awk -F= '$1 == "AUTH_MODE" { print $2; exit }' \
+              | tr -d '[:space:]\"'
+          )"
+
+          if [ "$AUTH_MODE" != "bff_oidc" ]; then
+            echo "Production auth mode is not bff_oidc; OIDC preflight is not required."
+            echo "auth_mode=${AUTH_MODE}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          required_secrets=(
+            PROD_AUTH_SESSION_REDIS_URL
+            PROD_OIDC_ISSUER
+            PROD_OIDC_CLIENT_ID
+            PROD_OIDC_REDIRECT_URI
+            PROD_OIDC_AUTHORIZATION_ENDPOINT
+            PROD_OIDC_TOKEN_ENDPOINT
+            PROD_OIDC_JWKS_URL
+          )
+
+          for secret_name in "${required_secrets[@]}"; do
+            if [ -z "${!secret_name:-}" ]; then
+              echo "BFF/OIDC production prerequisite is missing: ${secret_name}"
+              exit 1
+            fi
+          done
+
+          for url_name in \
+            PROD_OIDC_ISSUER \
+            PROD_OIDC_REDIRECT_URI \
+            PROD_OIDC_AUTHORIZATION_ENDPOINT \
+            PROD_OIDC_TOKEN_ENDPOINT \
+            PROD_OIDC_JWKS_URL; do
+            if [[ "${!url_name}" != https://* ]]; then
+              echo "BFF/OIDC production prerequisite must use HTTPS: ${url_name}"
+              exit 1
+            fi
+          done
+
+          if ! grep -Eq 'listen[[:space:]]+443[[:space:]]+ssl' docker/nginx/production.conf; then
+            echo "BFF/OIDC production requires an HTTPS reverse-proxy listener."
+            exit 1
+          fi
+
+          echo "BFF/OIDC production prerequisites are complete."
+          echo "auth_mode=${AUTH_MODE}" >> "$GITHUB_OUTPUT"
+
   build-and-push:
     name: Build and push Docker image
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
+    needs: auth-preflight
 
     outputs:
       image: ${{ steps.image.outputs.value }}
@@ -115,6 +196,13 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
           PROD_AUTH_JWT_SECRET: ${{ secrets.PROD_AUTH_JWT_SECRET }}
           PROD_AUTH_SESSION_REDIS_URL: ${{ secrets.PROD_AUTH_SESSION_REDIS_URL }}
+          PROD_OIDC_ISSUER: ${{ secrets.PROD_OIDC_ISSUER }}
+          PROD_OIDC_CLIENT_ID: ${{ secrets.PROD_OIDC_CLIENT_ID }}
+          PROD_OIDC_CLIENT_SECRET: ${{ secrets.PROD_OIDC_CLIENT_SECRET }}
+          PROD_OIDC_REDIRECT_URI: ${{ secrets.PROD_OIDC_REDIRECT_URI }}
+          PROD_OIDC_AUTHORIZATION_ENDPOINT: ${{ secrets.PROD_OIDC_AUTHORIZATION_ENDPOINT }}
+          PROD_OIDC_TOKEN_ENDPOINT: ${{ secrets.PROD_OIDC_TOKEN_ENDPOINT }}
+          PROD_OIDC_JWKS_URL: ${{ secrets.PROD_OIDC_JWKS_URL }}
           PROD_ENV_APP: ${{ secrets.PROD_ENV_APP }}
           PROD_ENV_POSTGRES: ${{ secrets.PROD_ENV_POSTGRES }}
           PROD_ENV_GRAFANA: ${{ secrets.PROD_ENV_GRAFANA }}
@@ -135,6 +223,17 @@ jobs:
             PROD_ENV_REDIS
           )
 
+          if [ "${{ needs.auth-preflight.outputs.auth_mode }}" = "bff_oidc" ]; then
+            REQUIRED_ENV_SECRETS+=(
+              PROD_OIDC_ISSUER
+              PROD_OIDC_CLIENT_ID
+              PROD_OIDC_REDIRECT_URI
+              PROD_OIDC_AUTHORIZATION_ENDPOINT
+              PROD_OIDC_TOKEN_ENDPOINT
+              PROD_OIDC_JWKS_URL
+            )
+          fi
+
           for secret_name in "${REQUIRED_ENV_SECRETS[@]}"; do
             if [ -z "${!secret_name:-}" ]; then
               echo "Required production environment secret is missing: ${secret_name}"
@@ -149,6 +248,13 @@ jobs:
           PROD_ENV_APP_B64="$(encode_env_file "$PROD_ENV_APP")"
           PROD_AUTH_JWT_SECRET_B64="$(encode_env_file "$PROD_AUTH_JWT_SECRET")"
           PROD_AUTH_SESSION_REDIS_URL_B64="$(encode_env_file "$PROD_AUTH_SESSION_REDIS_URL")"
+          PROD_OIDC_ISSUER_B64="$(encode_env_file "$PROD_OIDC_ISSUER")"
+          PROD_OIDC_CLIENT_ID_B64="$(encode_env_file "$PROD_OIDC_CLIENT_ID")"
+          PROD_OIDC_CLIENT_SECRET_B64="$(encode_env_file "$PROD_OIDC_CLIENT_SECRET")"
+          PROD_OIDC_REDIRECT_URI_B64="$(encode_env_file "$PROD_OIDC_REDIRECT_URI")"
+          PROD_OIDC_AUTHORIZATION_ENDPOINT_B64="$(encode_env_file "$PROD_OIDC_AUTHORIZATION_ENDPOINT")"
+          PROD_OIDC_TOKEN_ENDPOINT_B64="$(encode_env_file "$PROD_OIDC_TOKEN_ENDPOINT")"
+          PROD_OIDC_JWKS_URL_B64="$(encode_env_file "$PROD_OIDC_JWKS_URL")"
           PROD_ENV_POSTGRES_B64="$(encode_env_file "$PROD_ENV_POSTGRES")"
           PROD_ENV_GRAFANA_B64="$(encode_env_file "$PROD_ENV_GRAFANA")"
           PROD_ENV_POSTGRES_EXPORTER_B64="$(encode_env_file "$PROD_ENV_POSTGRES_EXPORTER")"
@@ -158,6 +264,13 @@ jobs:
           for encoded_secret in \
             "$PROD_AUTH_JWT_SECRET_B64" \
             "$PROD_AUTH_SESSION_REDIS_URL_B64" \
+            "$PROD_OIDC_ISSUER_B64" \
+            "$PROD_OIDC_CLIENT_ID_B64" \
+            "$PROD_OIDC_CLIENT_SECRET_B64" \
+            "$PROD_OIDC_REDIRECT_URI_B64" \
+            "$PROD_OIDC_AUTHORIZATION_ENDPOINT_B64" \
+            "$PROD_OIDC_TOKEN_ENDPOINT_B64" \
+            "$PROD_OIDC_JWKS_URL_B64" \
             "$PROD_ENV_APP_B64" \
             "$PROD_ENV_POSTGRES_B64" \
             "$PROD_ENV_GRAFANA_B64" \
@@ -175,6 +288,13 @@ jobs:
              GHCR_TOKEN='${GHCR_TOKEN}' \
              PROD_AUTH_JWT_SECRET_B64='${PROD_AUTH_JWT_SECRET_B64}' \
              PROD_AUTH_SESSION_REDIS_URL_B64='${PROD_AUTH_SESSION_REDIS_URL_B64}' \
+             PROD_OIDC_ISSUER_B64='${PROD_OIDC_ISSUER_B64}' \
+             PROD_OIDC_CLIENT_ID_B64='${PROD_OIDC_CLIENT_ID_B64}' \
+             PROD_OIDC_CLIENT_SECRET_B64='${PROD_OIDC_CLIENT_SECRET_B64}' \
+             PROD_OIDC_REDIRECT_URI_B64='${PROD_OIDC_REDIRECT_URI_B64}' \
+             PROD_OIDC_AUTHORIZATION_ENDPOINT_B64='${PROD_OIDC_AUTHORIZATION_ENDPOINT_B64}' \
+             PROD_OIDC_TOKEN_ENDPOINT_B64='${PROD_OIDC_TOKEN_ENDPOINT_B64}' \
+             PROD_OIDC_JWKS_URL_B64='${PROD_OIDC_JWKS_URL_B64}' \
              PROD_ENV_APP_B64='${PROD_ENV_APP_B64}' \
              PROD_ENV_POSTGRES_B64='${PROD_ENV_POSTGRES_B64}' \
              PROD_ENV_GRAFANA_B64='${PROD_ENV_GRAFANA_B64}' \
@@ -246,13 +366,29 @@ jobs:
           PROD_AUTH_SESSION_REDIS_URL="$(
             printf '%s' "$PROD_AUTH_SESSION_REDIS_URL_B64" | base64 --decode
           )"
+          PROD_OIDC_ISSUER="$(printf '%s' "$PROD_OIDC_ISSUER_B64" | base64 --decode)"
+          PROD_OIDC_CLIENT_ID="$(printf '%s' "$PROD_OIDC_CLIENT_ID_B64" | base64 --decode)"
+          PROD_OIDC_CLIENT_SECRET="$(printf '%s' "$PROD_OIDC_CLIENT_SECRET_B64" | base64 --decode)"
+          PROD_OIDC_REDIRECT_URI="$(printf '%s' "$PROD_OIDC_REDIRECT_URI_B64" | base64 --decode)"
+          PROD_OIDC_AUTHORIZATION_ENDPOINT="$(printf '%s' "$PROD_OIDC_AUTHORIZATION_ENDPOINT_B64" | base64 --decode)"
+          PROD_OIDC_TOKEN_ENDPOINT="$(printf '%s' "$PROD_OIDC_TOKEN_ENDPOINT_B64" | base64 --decode)"
+          PROD_OIDC_JWKS_URL="$(printf '%s' "$PROD_OIDC_JWKS_URL_B64" | base64 --decode)"
 
           if [ "${#PROD_AUTH_JWT_SECRET}" -lt 32 ]; then
             echo "PROD_AUTH_JWT_SECRET must contain at least 32 characters."
             exit 1
           fi
 
-          export PROD_AUTH_JWT_SECRET PROD_AUTH_SESSION_REDIS_URL
+          export \
+            PROD_AUTH_JWT_SECRET \
+            PROD_AUTH_SESSION_REDIS_URL \
+            PROD_OIDC_ISSUER \
+            PROD_OIDC_CLIENT_ID \
+            PROD_OIDC_CLIENT_SECRET \
+            PROD_OIDC_REDIRECT_URI \
+            PROD_OIDC_AUTHORIZATION_ENDPOINT \
+            PROD_OIDC_TOKEN_ENDPOINT \
+            PROD_OIDC_JWKS_URL
 
           python3 - <<'PY'
           import json
@@ -287,6 +423,13 @@ jobs:
               "AUTHZ_ENABLED": "true",
               "AUTH_JWT_SECRET": os.environ["PROD_AUTH_JWT_SECRET"],
               "AUTH_SESSION_REDIS_URL": os.environ["PROD_AUTH_SESSION_REDIS_URL"],
+              "AUTH_OIDC_ISSUER": os.environ["PROD_OIDC_ISSUER"],
+              "AUTH_OIDC_CLIENT_ID": os.environ["PROD_OIDC_CLIENT_ID"],
+              "AUTH_OIDC_CLIENT_SECRET": os.environ["PROD_OIDC_CLIENT_SECRET"],
+              "AUTH_OIDC_REDIRECT_URI": os.environ["PROD_OIDC_REDIRECT_URI"],
+              "AUTH_OIDC_AUTHORIZATION_ENDPOINT": os.environ["PROD_OIDC_AUTHORIZATION_ENDPOINT"],
+              "AUTH_OIDC_TOKEN_ENDPOINT": os.environ["PROD_OIDC_TOKEN_ENDPOINT"],
+              "AUTH_OIDC_JWKS_URL": os.environ["PROD_OIDC_JWKS_URL"],
               "CELERY_BROKER_URL": (
                   f"amqp://{quote(rabbitmq_user, safe='')}:"
                   f"{quote(rabbitmq_password, safe='')}@rabbitmq:5672/"
@@ -314,11 +457,27 @@ jobs:
           path.write_text("\n".join(rendered) + "\n")
           PY
 
-          unset PROD_AUTH_JWT_SECRET PROD_AUTH_SESSION_REDIS_URL
+          unset \
+            PROD_AUTH_JWT_SECRET \
+            PROD_AUTH_SESSION_REDIS_URL \
+            PROD_OIDC_ISSUER \
+            PROD_OIDC_CLIENT_ID \
+            PROD_OIDC_CLIENT_SECRET \
+            PROD_OIDC_REDIRECT_URI \
+            PROD_OIDC_AUTHORIZATION_ENDPOINT \
+            PROD_OIDC_TOKEN_ENDPOINT \
+            PROD_OIDC_JWKS_URL
 
           unset \
             PROD_AUTH_JWT_SECRET_B64 \
             PROD_AUTH_SESSION_REDIS_URL_B64 \
+            PROD_OIDC_ISSUER_B64 \
+            PROD_OIDC_CLIENT_ID_B64 \
+            PROD_OIDC_CLIENT_SECRET_B64 \
+            PROD_OIDC_REDIRECT_URI_B64 \
+            PROD_OIDC_AUTHORIZATION_ENDPOINT_B64 \
+            PROD_OIDC_TOKEN_ENDPOINT_B64 \
+            PROD_OIDC_JWKS_URL_B64 \
             PROD_ENV_APP_B64 \
             PROD_ENV_POSTGRES_B64 \
             PROD_ENV_GRAFANA_B64 \
