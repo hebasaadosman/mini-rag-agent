@@ -55,3 +55,12 @@ Production must use `AUTH_MODE=bff_oidc` and keep `AUTH_DEVELOPMENT_MANUAL_TOKEN
 | `AUTH_OIDC_ALLOWED_ALGORITHMS` | Asymmetric ID-token algorithms, e.g. `RS256,ES256`. |
 
 Do not set a provider URL, client secret, redirect URI, or production cookie setting in committed source code. The implementation is provider-neutral OIDC; Keycloak is only suitable as a local development provider.
+
+## Deployment secret
+
+GitHub Actions requires the protected environment secret
+`PROD_AUTH_SESSION_REDIS_URL` for every production deployment. It is written
+to `AUTH_SESSION_REDIS_URL` in the server-side `docker/env/.env.app` file and
+must point to the dedicated session Redis database or namespace (normally
+database `1`, separate from Celery's result database `0`). The workflow fails
+before connecting to the server when the secret is missing.
