@@ -413,7 +413,12 @@ jobs:
             sleep 5
           done
 
-          echo "Running Alembic migrations..."
+          # This branch is an emergency application rollback to a revision
+          # older than the database's current Alembic head. Do not downgrade
+          # or mutate the schema during recovery; newer additive tables remain
+          # harmless to this older application revision.
+          echo "Rollback deployment: skipping Alembic migrations."
+          if [ "${ROLLBACK_DEPLOYMENT:-true}" != "true" ]; then
 
           MIGRATION_CONTAINER="mini-rag-agent-migration-${DEPLOY_SHA:0:12}"
 
@@ -517,6 +522,7 @@ jobs:
           fi
 
           echo "Migration finished."
+          fi
 
           echo "Recreating application containers..."
 
