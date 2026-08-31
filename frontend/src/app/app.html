@@ -1,97 +1,93 @@
-<main class="shell">
+<main class="shell" dir="rtl">
   <header class="topbar">
     <a class="brand" href="/" aria-label="Multi-Agent RAG home">Multi-Agent RAG</a>
-    <span class="environment">Development workspace</span>
+    <span class="environment">Public demo</span>
   </header>
 
-  <section class="hero" dir="rtl" aria-labelledby="workspace-title">
-    <p class="eyebrow">Secure AI workspace</p>
-    <h1 id="workspace-title">دورة <bdi dir="ltr">RAG</bdi> تبدأ بهوية موثوقة.</h1>
-    @if (manualTokenEnabled) {
-      <p>
-        وضع التطوير فقط: الـ<bdi dir="ltr">token</bdi> يحفظ في
-        <bdi dir="ltr">session storage</bdi> للجلسة الحالية، ولا توجد كلمة مرور أو
-        <bdi dir="ltr">secret</bdi> داخل الواجهة.
-      </p>
+  <section class="hero" aria-labelledby="demo-title">
+    <p class="eyebrow">Applied AI · RAG · Agentic Systems</p>
+    <h1 id="demo-title">جرّبي الـAI workspace في أقل من دقيقة.</h1>
+    <p>جلسة محدودة وآمنة على workspace جاهز: إجابات grounded بالمصادر، routing بين agents، وHuman-in-the-Loop عند الحاجة إلى توضيح.</p>
+    @if (!isDemo()) {
+      <div class="hero-actions">
+        <button type="button" (click)="exploreDemo()" [disabled]="isLoading()">{{ isLoading() ? 'جارٍ بدء الجلسة…' : 'Explore Demo' }}</button>
+        <button type="button" class="secondary-action" (click)="startSingleSignOn()" [disabled]="isLoading()">Sign in with SSO</button>
+      </div>
     } @else {
-      <p>تتم المصادقة عبر نظام الهوية المؤسسي وجلسة <bdi dir="ltr">HttpOnly</bdi> آمنة.</p>
+      <div class="session-actions">
+        <span class="session-state">Demo session active</span>
+        <button type="button" class="secondary-action" (click)="signOut()" [disabled]="isLoading()">Sign out</button>
+      </div>
     }
   </section>
 
-  <section class="workspace-grid" aria-label="Project workspace setup">
-    <article class="card" aria-labelledby="identity-title">
-      <div class="card-heading">
-        <p class="step">01</p>
-        <h2 id="identity-title">Verify identity</h2>
-      </div>
-      @if (manualTokenEnabled) {
-        <label for="token">Development access token</label>
-        <textarea
-          id="token"
-          rows="5"
-          [value]="token()"
-          (input)="updateToken($any($event.target).value)"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="Paste a short-lived bearer token"
-        ></textarea>
-        <button type="button" (click)="verifyIdentity()" [disabled]="isLoading()">
-          {{ isLoading() ? 'Working…' : 'Verify token' }}
-        </button>
-      } @else {
-        <p class="sso-copy">تتم المصادقة عبر نظام الهوية المؤسسي. لا تحفظ الواجهة أي access token.</p>
-        <button type="button" (click)="startSingleSignOn()">Sign in with SSO</button>
-      }
+  <aside class="message" [class.success]="messageTone() === 'success'" [class.error]="messageTone() === 'error'" aria-live="polite">{{ message() }}</aside>
 
-      @if (principal(); as user) {
-        <div class="identity-result" aria-live="polite">
-          <span class="status-dot" aria-hidden="true"></span>
-          <div>
-            <strong>{{ user.subject }}</strong>
-            <p>{{ user.roles.length ? user.roles.join(', ') : 'No global roles in token' }}</p>
-          </div>
+  @if (isDemo() && currentProject(); as project) {
+    <section class="demo-grid" aria-label="Demo workspace">
+      <article class="card workspace-card">
+        <p class="eyebrow">Preloaded workspace</p>
+        <h2>المستندات والـindex جاهزان</h2>
+        <p>جلسة مشاهدة فقط. لا upload، ولا projects أو إعدادات يمكن تعديلها.</p>
+        <div class="workspace-meta"><span class="status-dot" aria-hidden="true"></span><span>Workspace #{{ project.project_id }}</span><span>RAG · Sources · Multi-Agent · HITL</span></div>
+      </article>
+
+      <article class="card chat-card">
+        <div class="card-heading">
+          <div><p class="eyebrow">Ask the agents</p><h2>Multi-Agent chat</h2></div>
+          @if (threadId()) { <span class="thread-state">Thread محفوظ</span> }
         </div>
-      }
-    </article>
-
-    <article class="card" aria-labelledby="project-title">
-      <div class="card-heading">
-        <p class="step">02</p>
-        <h2 id="project-title">Create project</h2>
-      </div>
-      <label for="description">Project description <span>(optional)</span></label>
-      <textarea
-        id="description"
-        rows="5"
-        [value]="projectDescription()"
-        (input)="updateProjectDescription($any($event.target).value)"
-        placeholder="مثال: سياسات الموارد البشرية"
-      ></textarea>
-      <button type="button" (click)="createProject()" [disabled]="isLoading() || !isAuthenticated()">
-        Create project
-      </button>
-
-      @if (currentProject(); as project) {
-        <div class="identity-result" aria-live="polite">
-          <span class="status-dot" aria-hidden="true"></span>
-          <div>
-            <strong>Project #{{ project.project_id }}</strong>
-            <p>{{ project.role }} · جاهز للـupload في الخطوة التالية</p>
+        @if (suggestedQuestions().length) {
+          <div class="suggestions" aria-label="Suggested questions">
+            @for (question of suggestedQuestions(); track question) {
+              <button type="button" (click)="chooseSuggestedQuestion(question)" [disabled]="isLoading() || pendingInteraction()">{{ question }}</button>
+            }
           </div>
-        </div>
-      }
-    </article>
-  </section>
+        }
+        <label for="question">سؤالك</label>
+        <textarea id="question" rows="4" [value]="chatMessage()" (input)="updateChatMessage($any($event.target).value)" placeholder="اسألي عن محتوى الـDemo document" [disabled]="isLoading() || pendingInteraction()"></textarea>
+        <button type="button" (click)="sendChat()" [disabled]="isLoading() || !chatMessage().trim() || pendingInteraction()">{{ isLoading() ? 'جارٍ التفكير…' : 'Ask agents' }}</button>
 
-  <aside class="message" dir="rtl" [class.success]="messageTone() === 'success'" [class.error]="messageTone() === 'error'" aria-live="polite">
-    {{ message() }}
-  </aside>
+        @if (pendingInteraction(); as interaction) {
+          <section class="interaction" aria-live="polite">
+            <p class="eyebrow">Human-in-the-loop</p>
+            <h3>{{ interaction.question }}</h3>
+            @if (interaction.options.length) {
+              <div class="suggestions">
+                @for (option of interaction.options; track option) {
+                  <button type="button" (click)="resumeChat(option)" [disabled]="isLoading()">{{ option }}</button>
+                }
+              </div>
+            } @else {
+              <label for="resume-response">توضيحك</label>
+              <textarea id="resume-response" rows="3" [value]="resumeResponse()" (input)="updateResumeResponse($any($event.target).value)" placeholder="اكتبي التوضيح المطلوب" [disabled]="isLoading()"></textarea>
+              <button type="button" (click)="resumeChat()" [disabled]="isLoading() || !resumeResponse().trim()">Continue task</button>
+            }
+          </section>
+        }
 
-  <section class="next-step" dir="rtl" aria-labelledby="next-title">
-    <p class="eyebrow">Next</p>
-    <h2 id="next-title">Upload → Process → Index → Chat</h2>
-    <p>سنضيف هذه الدورة في الـfeature التالية بعد تثبيت الاتصال والـproject context.</p>
-  </section>
+        @if (chatAnswer(); as answer) {
+          <section class="answer" aria-live="polite"><p class="eyebrow">Grounded answer</p><p>{{ answer }}</p></section>
+        }
+        @if (chatSources()?.length) {
+          <section class="sources" aria-live="polite">
+            <p class="eyebrow">Sources</p>
+            <ul>
+              @for (source of chatSources(); track $index) {
+                <li>{{ source.asset_name || 'Demo document' }} @if (source.chunk_id !== null && source.chunk_id !== undefined) { · chunk {{ source.chunk_id }} }</li>
+              }
+            </ul>
+          </section>
+        }
+      </article>
+    </section>
+  } @else {
+    <section class="preview-grid" aria-label="Demo capabilities">
+      <article class="card"><span>01</span><h2>Grounded RAG</h2><p>الإجابة مرتبطة بمقاطع مسترجعة ويمكن مراجعة مصادرها.</p></article>
+      <article class="card"><span>02</span><h2>Agent routing</h2><p>يوجه السؤال إلى المسار المتخصص بدل إجابة عامة واحدة.</p></article>
+      <article class="card"><span>03</span><h2>HITL resume</h2><p>سيناريو توضيح حقيقي ثم استكمال نفس thread دون البدء من الصفر.</p></article>
+    </section>
+  }
 </main>
 
 <router-outlet />
