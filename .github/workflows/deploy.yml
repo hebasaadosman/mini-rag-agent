@@ -1,10 +1,6 @@
 name: Deploy Production
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -18,18 +14,15 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  # A workflow_run is created after CI, so use the exact commit CI validated
-  # rather than the latest commit that happens to be on main.
-  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+  # This workflow is deliberately manual-only. The dispatch commit is the
+  # only deployable revision unless an operator explicitly changes the file.
+  DEPLOY_SHA: ${{ github.sha }}
 
 jobs:
   auth-preflight:
     name: Validate production authentication prerequisites
     runs-on: ubuntu-latest
     environment: production
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
     outputs:
       auth_mode: ${{ steps.preflight.outputs.auth_mode }}
 
@@ -110,9 +103,6 @@ jobs:
   build-and-push:
     name: Build and push Docker image
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
     needs: auth-preflight
 
     outputs:

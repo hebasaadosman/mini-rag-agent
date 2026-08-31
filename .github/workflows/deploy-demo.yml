@@ -1,0 +1,281 @@
+name: Deploy Public Demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: "Full commit SHA to deploy (must already be reachable from origin/main)"
+        required: true
+        type: string
+      mode:
+        description: "bootstrap serves HTTP only; tls requires pre-existing certificates"
+        required: true
+        default: bootstrap
+        type: choice
+        options: [bootstrap, tls]
+
+concurrency:
+  group: public-demo-deployment
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  COMPOSE_PROJECT: mini-rag-demo
+
+jobs:
+  validate-and-build:
+    name: Validate and build immutable demo images
+    runs-on: ubuntu-24.04
+    environment: demo-production
+    outputs:
+      release_sha: ${{ steps.release.outputs.sha }}
+      app_image: ${{ steps.images.outputs.app }}
+      frontend_image: ${{ steps.images.outputs.frontend }}
+
+    steps:
+      - name: Validate requested release is committed on main
+        id: release
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "release_sha must be a full 40-character lowercase commit SHA." >&2
+            exit 1
+          }
+          echo "sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Check out requested release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Verify release ancestry and all demo secrets
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          DEMO_HOST: ${{ secrets.DEMO_HOST }}
+          DEMO_USER: ${{ secrets.DEMO_USER }}
+          DEMO_DEPLOY_PATH: ${{ secrets.DEMO_DEPLOY_PATH }}
+          DEMO_SSH_PRIVATE_KEY: ${{ secrets.DEMO_SSH_PRIVATE_KEY }}
+          DEMO_SSH_KNOWN_HOSTS: ${{ secrets.DEMO_SSH_KNOWN_HOSTS }}
+          DEMO_GHCR_USERNAME: ${{ secrets.DEMO_GHCR_USERNAME }}
+          DEMO_GHCR_READ_TOKEN: ${{ secrets.DEMO_GHCR_READ_TOKEN }}
+          DEMO_TARGET_MARKER: ${{ secrets.DEMO_TARGET_MARKER }}
+          DEMO_ENV_NGINX: ${{ secrets.DEMO_ENV_NGINX }}
+          DEMO_ENV_RUNTIME: ${{ secrets.DEMO_ENV_RUNTIME }}
+          DEMO_ENV_POSTGRES: ${{ secrets.DEMO_ENV_POSTGRES }}
+          DEMO_ENV_KEYCLOAK_DB: ${{ secrets.DEMO_ENV_KEYCLOAK_DB }}
+          DEMO_ENV_KEYCLOAK: ${{ secrets.DEMO_ENV_KEYCLOAK }}
+          DEMO_ENV_PROVISIONER: ${{ secrets.DEMO_ENV_PROVISIONER }}
+          DEMO_ENV_PROVISIONER_RUNTIME: ${{ secrets.DEMO_ENV_PROVISIONER_RUNTIME }}
+          DEMO_ENV_RABBITMQ: ${{ secrets.DEMO_ENV_RABBITMQ }}
+          DEMO_ENV_REDIS: ${{ secrets.DEMO_ENV_REDIS }}
+          DEMO_ENV_APP: ${{ secrets.DEMO_ENV_APP }}
+          DEMO_ENV_WORKER_FILE: ${{ secrets.DEMO_ENV_WORKER_FILE }}
+          DEMO_ENV_WORKER_INDEX: ${{ secrets.DEMO_ENV_WORKER_INDEX }}
+          DEMO_ENV_WORKER_MAINTENANCE: ${{ secrets.DEMO_ENV_WORKER_MAINTENANCE }}
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main || {
+            echo "Requested release is not reachable from origin/main." >&2
+            exit 1
+          }
+          required=(
+            DEMO_HOST DEMO_USER DEMO_DEPLOY_PATH DEMO_SSH_PRIVATE_KEY
+            DEMO_SSH_KNOWN_HOSTS DEMO_GHCR_USERNAME DEMO_GHCR_READ_TOKEN
+            DEMO_TARGET_MARKER DEMO_ENV_NGINX DEMO_ENV_RUNTIME DEMO_ENV_POSTGRES
+            DEMO_ENV_KEYCLOAK_DB DEMO_ENV_KEYCLOAK DEMO_ENV_PROVISIONER
+            DEMO_ENV_PROVISIONER_RUNTIME DEMO_ENV_RABBITMQ DEMO_ENV_REDIS
+            DEMO_ENV_APP DEMO_ENV_WORKER_FILE DEMO_ENV_WORKER_INDEX
+            DEMO_ENV_WORKER_MAINTENANCE
+          )
+          for name in "${required[@]}"; do
+            [[ -n "${!name:-}" ]] || { echo "Required demo secret is missing: $name" >&2; exit 1; }
+          done
+
+      - name: Resolve immutable image names
+        id: images
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          set -Eeuo pipefail
+          base="${REGISTRY}/${GITHUB_REPOSITORY,,}"
+          echo "app=${base}:${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "frontend=${base}-nginx:${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push demo application image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/mini_rag/Dockerfile
+          push: true
+          tags: ${{ steps.images.outputs.app }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.release.outputs.sha }}
+
+      - name: Build and push demo frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/nginx/Dockerfile
+          push: true
+          tags: ${{ steps.images.outputs.frontend }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.release.outputs.sha }}
+
+  deploy:
+    name: Deploy public demo and verify it
+    runs-on: ubuntu-24.04
+    environment: demo-production
+    needs: validate-and-build
+    env:
+      RELEASE_SHA: ${{ needs.validate-and-build.outputs.release_sha }}
+      DEMO_APP_IMAGE: ${{ needs.validate-and-build.outputs.app_image }}
+      DEMO_FRONTEND_IMAGE: ${{ needs.validate-and-build.outputs.frontend_image }}
+      DEMO_TLS_MODE: ${{ inputs.mode }}
+      DEMO_HOST: ${{ secrets.DEMO_HOST }}
+      DEMO_USER: ${{ secrets.DEMO_USER }}
+      DEMO_DEPLOY_PATH: ${{ secrets.DEMO_DEPLOY_PATH }}
+      DEMO_SSH_PRIVATE_KEY: ${{ secrets.DEMO_SSH_PRIVATE_KEY }}
+      DEMO_SSH_KNOWN_HOSTS: ${{ secrets.DEMO_SSH_KNOWN_HOSTS }}
+      DEMO_GHCR_USERNAME: ${{ secrets.DEMO_GHCR_USERNAME }}
+      DEMO_GHCR_READ_TOKEN: ${{ secrets.DEMO_GHCR_READ_TOKEN }}
+      DEMO_TARGET_MARKER: ${{ secrets.DEMO_TARGET_MARKER }}
+      DEMO_ENV_NGINX: ${{ secrets.DEMO_ENV_NGINX }}
+      DEMO_ENV_RUNTIME: ${{ secrets.DEMO_ENV_RUNTIME }}
+      DEMO_ENV_POSTGRES: ${{ secrets.DEMO_ENV_POSTGRES }}
+      DEMO_ENV_KEYCLOAK_DB: ${{ secrets.DEMO_ENV_KEYCLOAK_DB }}
+      DEMO_ENV_KEYCLOAK: ${{ secrets.DEMO_ENV_KEYCLOAK }}
+      DEMO_ENV_PROVISIONER: ${{ secrets.DEMO_ENV_PROVISIONER }}
+      DEMO_ENV_PROVISIONER_RUNTIME: ${{ secrets.DEMO_ENV_PROVISIONER_RUNTIME }}
+      DEMO_ENV_RABBITMQ: ${{ secrets.DEMO_ENV_RABBITMQ }}
+      DEMO_ENV_REDIS: ${{ secrets.DEMO_ENV_REDIS }}
+      DEMO_ENV_APP: ${{ secrets.DEMO_ENV_APP }}
+      DEMO_ENV_WORKER_FILE: ${{ secrets.DEMO_ENV_WORKER_FILE }}
+      DEMO_ENV_WORKER_INDEX: ${{ secrets.DEMO_ENV_WORKER_INDEX }}
+      DEMO_ENV_WORKER_MAINTENANCE: ${{ secrets.DEMO_ENV_WORKER_MAINTENANCE }}
+
+    steps:
+      - name: Prepare pinned SSH trust
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEMO_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$DEMO_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      - name: Package only demo deployment assets
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git archive --format=tar "$RELEASE_SHA" -- \
+            docker/docker-compose.demo.yml docker/env docker/nginx docker/keycloak docker/postgres \
+            | gzip -n > "$RUNNER_TEMP/demo-release.tgz"
+
+      - name: Upload demo release bundle
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          scp "$RUNNER_TEMP/demo-release.tgz" \
+            "${DEMO_USER}@${DEMO_HOST}:/tmp/mini-rag-demo-${RELEASE_SHA}.tgz"
+
+      - name: Apply, smoke test, and mark known-good only on success
+        shell: bash
+        env:
+          DEMO_ENV_NGINX_B64: ${{ secrets.DEMO_ENV_NGINX }}
+          DEMO_ENV_RUNTIME_B64: ${{ secrets.DEMO_ENV_RUNTIME }}
+          DEMO_ENV_POSTGRES_B64: ${{ secrets.DEMO_ENV_POSTGRES }}
+          DEMO_ENV_KEYCLOAK_DB_B64: ${{ secrets.DEMO_ENV_KEYCLOAK_DB }}
+          DEMO_ENV_KEYCLOAK_B64: ${{ secrets.DEMO_ENV_KEYCLOAK }}
+          DEMO_ENV_PROVISIONER_B64: ${{ secrets.DEMO_ENV_PROVISIONER }}
+          DEMO_ENV_PROVISIONER_RUNTIME_B64: ${{ secrets.DEMO_ENV_PROVISIONER_RUNTIME }}
+          DEMO_ENV_RABBITMQ_B64: ${{ secrets.DEMO_ENV_RABBITMQ }}
+          DEMO_ENV_REDIS_B64: ${{ secrets.DEMO_ENV_REDIS }}
+          DEMO_ENV_APP_B64: ${{ secrets.DEMO_ENV_APP }}
+          DEMO_ENV_WORKER_FILE_B64: ${{ secrets.DEMO_ENV_WORKER_FILE }}
+          DEMO_ENV_WORKER_INDEX_B64: ${{ secrets.DEMO_ENV_WORKER_INDEX }}
+          DEMO_ENV_WORKER_MAINTENANCE_B64: ${{ secrets.DEMO_ENV_WORKER_MAINTENANCE }}
+        run: |
+          set -Eeuo pipefail
+          for name in DEMO_ENV_NGINX_B64 DEMO_ENV_RUNTIME_B64 DEMO_ENV_POSTGRES_B64 DEMO_ENV_KEYCLOAK_DB_B64 DEMO_ENV_KEYCLOAK_B64 DEMO_ENV_PROVISIONER_B64 DEMO_ENV_PROVISIONER_RUNTIME_B64 DEMO_ENV_RABBITMQ_B64 DEMO_ENV_REDIS_B64 DEMO_ENV_APP_B64 DEMO_ENV_WORKER_FILE_B64 DEMO_ENV_WORKER_INDEX_B64 DEMO_ENV_WORKER_MAINTENANCE_B64; do
+            printf -v "$name" '%s' "$(printf '%s' "${!name}" | base64 -w0)"
+          done
+          ssh "${DEMO_USER}@${DEMO_HOST}" \
+            "RELEASE_SHA='$RELEASE_SHA' DEMO_APP_IMAGE='$DEMO_APP_IMAGE' DEMO_FRONTEND_IMAGE='$DEMO_FRONTEND_IMAGE' DEMO_TLS_MODE='$DEMO_TLS_MODE' DEMO_DEPLOY_PATH='$DEMO_DEPLOY_PATH' DEMO_TARGET_MARKER='$DEMO_TARGET_MARKER' DEMO_GHCR_USERNAME='$DEMO_GHCR_USERNAME' DEMO_GHCR_READ_TOKEN='$DEMO_GHCR_READ_TOKEN' DEMO_ENV_NGINX_B64='$DEMO_ENV_NGINX_B64' DEMO_ENV_RUNTIME_B64='$DEMO_ENV_RUNTIME_B64' DEMO_ENV_POSTGRES_B64='$DEMO_ENV_POSTGRES_B64' DEMO_ENV_KEYCLOAK_DB_B64='$DEMO_ENV_KEYCLOAK_DB_B64' DEMO_ENV_KEYCLOAK_B64='$DEMO_ENV_KEYCLOAK_B64' DEMO_ENV_PROVISIONER_B64='$DEMO_ENV_PROVISIONER_B64' DEMO_ENV_PROVISIONER_RUNTIME_B64='$DEMO_ENV_PROVISIONER_RUNTIME_B64' DEMO_ENV_RABBITMQ_B64='$DEMO_ENV_RABBITMQ_B64' DEMO_ENV_REDIS_B64='$DEMO_ENV_REDIS_B64' DEMO_ENV_APP_B64='$DEMO_ENV_APP_B64' DEMO_ENV_WORKER_FILE_B64='$DEMO_ENV_WORKER_FILE_B64' DEMO_ENV_WORKER_INDEX_B64='$DEMO_ENV_WORKER_INDEX_B64' DEMO_ENV_WORKER_MAINTENANCE_B64='$DEMO_ENV_WORKER_MAINTENANCE_B64' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          project=mini-rag-demo
+          marker="$DEMO_DEPLOY_PATH/.mini-rag-demo-target"
+          state_dir="$DEMO_DEPLOY_PATH/state"
+          state_file="$state_dir/last-known-good.env"
+          release_dir="$DEMO_DEPLOY_PATH/releases/$RELEASE_SHA"
+          bundle="/tmp/mini-rag-demo-$RELEASE_SHA.tgz"
+          test -f "$marker" && test "$(cat "$marker")" = "$DEMO_TARGET_MARKER" || { echo "Demo target marker is missing or incorrect." >&2; exit 1; }
+          mkdir -p "$DEMO_DEPLOY_PATH/releases" "$state_dir"
+          test ! -e "$release_dir" || { echo "Release directory already exists; refusing to overwrite deployment metadata." >&2; exit 1; }
+          mkdir -p "$release_dir"
+          tar -xzf "$bundle" -C "$release_dir"; rm -f "$bundle"
+          cd "$release_dir/docker"
+          write_env() { printf '%s' "${!1}" | base64 -d > "env/$2.tmp"; test -s "env/$2.tmp"; chmod 600 "env/$2.tmp"; mv "env/$2.tmp" "env/$2"; }
+          write_env DEMO_ENV_NGINX_B64 .env.demo.nginx; write_env DEMO_ENV_RUNTIME_B64 .env.demo.runtime; write_env DEMO_ENV_POSTGRES_B64 .env.demo.postgres; write_env DEMO_ENV_KEYCLOAK_DB_B64 .env.demo.keycloak-db; write_env DEMO_ENV_KEYCLOAK_B64 .env.demo.keycloak; write_env DEMO_ENV_PROVISIONER_B64 .env.demo.provisioner; write_env DEMO_ENV_PROVISIONER_RUNTIME_B64 .env.demo.provisioner-runtime; write_env DEMO_ENV_RABBITMQ_B64 .env.demo.rabbitmq; write_env DEMO_ENV_REDIS_B64 .env.demo.redis; write_env DEMO_ENV_APP_B64 .env.demo.app; write_env DEMO_ENV_WORKER_FILE_B64 .env.demo.worker-file; write_env DEMO_ENV_WORKER_INDEX_B64 .env.demo.worker-index; write_env DEMO_ENV_WORKER_MAINTENANCE_B64 .env.demo.worker-maintenance
+          sed -Ei "s|^DEMO_TLS_MODE=.*$|DEMO_TLS_MODE=$DEMO_TLS_MODE|" env/.env.demo.nginx
+          printf 'DEMO_APP_IMAGE=%s\nDEMO_FRONTEND_IMAGE=%s\n' "$DEMO_APP_IMAGE" "$DEMO_FRONTEND_IMAGE" > .env.demo.images
+          chmod 600 .env.demo.images
+          printf 'RELEASE_SHA=%s\nDEMO_APP_IMAGE=%s\nDEMO_FRONTEND_IMAGE=%s\nDEMO_TLS_MODE=%s\n' "$RELEASE_SHA" "$DEMO_APP_IMAGE" "$DEMO_FRONTEND_IMAGE" "$DEMO_TLS_MODE" > .demo-release.env
+          compose() { docker compose --project-name "$project" --env-file .env.demo.images -f docker-compose.demo.yml "$@"; }
+          rollback() {
+            test -s "$state_file" || { echo "No verified known-good release exists; not guessing a rollback target." >&2; return 0; }
+            set -a; . "$state_file"; set +a
+            test -n "${RELEASE_SHA:-}" && test -f "$DEMO_DEPLOY_PATH/releases/$RELEASE_SHA/docker/.demo-release.env" || { echo "Known-good metadata is invalid; manual recovery required." >&2; return 0; }
+            known_sha="$RELEASE_SHA"
+            known_app_image="$DEMO_APP_IMAGE"
+            known_frontend_image="$DEMO_FRONTEND_IMAGE"
+            known_mode="$DEMO_TLS_MODE"
+            cd "$DEMO_DEPLOY_PATH/releases/$known_sha/docker"
+            set -a; . .demo-release.env; set +a
+            test "$RELEASE_SHA" = "$known_sha" && test "$DEMO_APP_IMAGE" = "$known_app_image" && test "$DEMO_FRONTEND_IMAGE" = "$known_frontend_image" && test "$DEMO_TLS_MODE" = "$known_mode" || { echo "Known-good release metadata does not match its state pointer." >&2; return 0; }
+            grep -Fxq "DEMO_TLS_MODE=$known_mode" env/.env.demo.nginx || { echo "Known-good Nginx environment does not match known-good deployment mode." >&2; return 0; }
+            compose() { docker compose --project-name "$project" --env-file .env.demo.images -f docker-compose.demo.yml "$@"; }
+            compose pull; compose up -d --no-build --force-recreate
+            echo "Restored verified known-good release $known_sha in $known_mode mode."
+          }
+          trap 'status=$?; echo "Demo apply or smoke failed." >&2; rollback || true; exit "$status"' ERR
+          if [ "$DEMO_TLS_MODE" = tls ]; then
+            app_domain="$(awk -F= '$1=="DEMO_APP_DOMAIN" {print $2}' env/.env.demo.nginx)"
+            docker volume inspect mini-rag-demo_tls_certs >/dev/null
+            docker run --rm -v mini-rag-demo_tls_certs:/certs:ro alpine:3.20 sh -ec 'test -s "/certs/live/$1/fullchain.pem" && test -s "/certs/live/$1/privkey.pem"' sh "$app_domain"
+          fi
+          printf '%s' "$DEMO_GHCR_READ_TOKEN" | docker login ghcr.io --username "$DEMO_GHCR_USERNAME" --password-stdin
+          compose config -q; compose pull; compose up -d --no-build --force-recreate
+          app_domain="$(awk -F= '$1=="DEMO_APP_DOMAIN" {print $2}' env/.env.demo.nginx)"
+          idp_domain="$(awk -F= '$1=="DEMO_IDP_DOMAIN" {print $2}' env/.env.demo.nginx)"
+          if [ "$DEMO_TLS_MODE" = bootstrap ]; then
+            curl --fail --silent --show-error --max-time 15 -H "Host: $app_domain" http://127.0.0.1/ | grep -Fq 'TLS bootstrap active'
+          else
+            curl --fail --silent --show-error --max-time 15 --resolve "$app_domain:443:127.0.0.1" "https://$app_domain/" >/dev/null
+            curl --fail --silent --show-error --max-time 15 --resolve "$idp_domain:443:127.0.0.1" "https://$idp_domain/realms/mini-rag/.well-known/openid-configuration" >/dev/null
+          fi
+          cp .demo-release.env "$state_file.tmp"; chmod 600 "$state_file.tmp"; mv "$state_file.tmp" "$state_file"
+          echo "Release $RELEASE_SHA passed $DEMO_TLS_MODE smoke and is now known-good."
+          REMOTE

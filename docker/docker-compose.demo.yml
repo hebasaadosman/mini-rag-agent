@@ -6,7 +6,7 @@ services:
     image: ${DEMO_FRONTEND_IMAGE:?set immutable SHA-tagged frontend image}
     ports: ["80:80", "443:443"]
     env_file: [./env/.env.demo.nginx]
-    volumes: [./nginx/certs:/etc/nginx/certs:ro, demo_acme:/var/www/certbot]
+    volumes: [demo_tls_certs:/etc/nginx/certs:ro, demo_acme:/var/www/certbot]
     depends_on: {fastapi: {condition: service_started}, keycloak: {condition: service_healthy}}
     networks: [demo_backend]
     restart: unless-stopped
@@ -129,7 +129,7 @@ services:
   certbot:
     image: certbot/certbot:v3.1.0
     profiles: [tls-bootstrap]
-    volumes: [./nginx/certs:/etc/letsencrypt, demo_acme:/var/www/certbot]
+    volumes: [demo_tls_certs:/etc/letsencrypt, demo_acme:/var/www/certbot]
 volumes:
   demo_pgvector: {name: mini-rag-demo_pgvector_data}
   demo_redis: {name: mini-rag-demo_redis_data}
@@ -138,5 +138,6 @@ volumes:
   demo_assets: {name: mini-rag-demo_assets_data}
   demo_celery_beat: {name: mini-rag-demo_celery_beat_data}
   demo_acme: {name: mini-rag-demo_acme_data}
+  demo_tls_certs: {name: mini-rag-demo_tls_certs}
 networks:
   demo_backend: {name: mini-rag-demo_backend, driver: bridge}
