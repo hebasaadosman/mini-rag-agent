@@ -1,0 +1,142 @@
+name: mini-rag-demo
+
+# Standalone public demo. Never combine this file with the legacy Compose files.
+services:
+  nginx:
+    image: ${DEMO_FRONTEND_IMAGE:?set immutable SHA-tagged frontend image}
+    ports: ["80:80", "443:443"]
+    env_file: [./env/.env.demo.nginx]
+    volumes: [./nginx/certs:/etc/nginx/certs:ro, demo_acme:/var/www/certbot]
+    depends_on: {fastapi: {condition: service_started}, keycloak: {condition: service_healthy}}
+    networks: [demo_backend]
+    restart: unless-stopped
+  fastapi:
+    image: ${DEMO_APP_IMAGE:?set immutable SHA-tagged application image}
+    command: [uvicorn, main:app, --host, 0.0.0.0, --port, "8000", --workers, "1"]
+    env_file: [./env/.env.demo.runtime, ./env/.env.demo.postgres, ./env/.env.demo-app]
+    volumes: [demo_assets:/app/assets]
+    depends_on: {migration: {condition: service_completed_successfully}, demo-provisioner: {condition: service_completed_successfully}, keycloak-demo-provisioner: {condition: service_completed_successfully}}
+    networks: [demo_backend]
+    restart: unless-stopped
+  migration:
+    image: ${DEMO_APP_IMAGE:?set immutable SHA-tagged application image}
+    command: [python, -m, scripts.demo_migrate]
+    env_file: [./env/.env.demo.runtime, ./env/.env.demo.postgres]
+    depends_on: {pgvector: {condition: service_healthy}}
+    networks: [demo_backend]
+    restart: "no"
+  demo-provisioner:
+    image: ${DEMO_APP_IMAGE:?set immutable SHA-tagged application image}
+    command: [python, -m, scripts.provision_demo_workspace]
+    env_file: [./env/.env.demo.runtime, ./env/.env.demo.postgres, ./env/.env.demo.provisioner-runtime]
+    volumes: [demo_assets:/app/assets]
+    depends_on: {migration: {condition: service_completed_successfully}, celery-file-worker: {condition: service_started}, celery-index-worker: {condition: service_started}}
+    networks: [demo_backend]
+    restart: "no"
+  demo-volume-init:
+    image: ${DEMO_APP_IMAGE:?set immutable SHA-tagged application image}
+    user: "0:0"
+    entrypoint: [/bin/sh, -c]
+    command: ["mkdir -p /app/assets /var/lib/celery && chown -R 10001:10001 /app/assets /var/lib/celery"]
+    volumes: [demo_assets:/app/assets, demo_celery_beat:/var/lib/celery]
+    networks: [demo_backend]
+    restart: "no"
+  celery-file-worker:
+    image: ${DEMO_APP_IMAGE:?set immutable SHA-tagged application image}
+    user: "10001:10001"
+    command: [celery, -A, celery_app:celery_app, worker, --loglevel=info, --queues=file_processing, --concurrency=1]
+    env_file: [./env/.env.demo.runtime, ./env/.env.demo.postgres, ./env/.env.demo.worker-file]
+    volumes: [demo_assets:/app/assets]
+    depends_on: {demo-volume-init: {condition: service_completed_successfully}, pgvector: {condition: service_healthy}, rabbitmq: {condition: service_healthy}, redis: {condition: service_healthy}}
+    networks: [demo_backend]
+    restart: unless-stopped
+  celery-index-worker:
+    image: ${DEMO_APP_IMAGE:?set immutable SHA-tagged application image}
+    user: "10001:10001"
+    command: [celery, -A, celery_app:celery_app, worker, --loglevel=info, --queues=index_processing, --concurrency=1]
+    env_file: [./env/.env.demo.runtime, ./env/.env.demo.postgres, ./env/.env.demo.worker-index]
+    volumes: [demo_assets:/app/assets]
+    depends_on: {demo-volume-init: {condition: service_completed_successfully}, pgvector: {condition: service_healthy}, rabbitmq: {condition: service_healthy}, redis: {condition: service_healthy}}
+    networks: [demo_backend]
+    restart: unless-stopped
+  celery-maintenance-worker:
+    image: ${DEMO_APP_IMAGE:?set immutable SHA-tagged application image}
+    user: "10001:10001"
+    command: [celery, -A, celery_app:celery_app, worker, --loglevel=info, --queues=maintenance, --concurrency=1]
+    env_file: [./env/.env.demo.runtime, ./env/.env.demo.postgres, ./env/.env.demo.worker-maintenance]
+    depends_on: {demo-volume-init: {condition: service_completed_successfully}, pgvector: {condition: service_healthy}, rabbitmq: {condition: service_healthy}, redis: {condition: service_healthy}}
+    networks: [demo_backend]
+    restart: unless-stopped
+  celery-beat:
+    image: ${DEMO_APP_IMAGE:?set immutable SHA-tagged application image}
+    user: "10001:10001"
+    command: [celery, -A, celery_app:celery_app, beat, --loglevel=info, --schedule=/var/lib/celery/celerybeat-schedule]
+    env_file: [./env/.env.demo.runtime, ./env/.env.demo.postgres, ./env/.env.demo.worker-maintenance]
+    volumes: [demo_celery_beat:/var/lib/celery]
+    depends_on: {demo-volume-init: {condition: service_completed_successfully}, rabbitmq: {condition: service_healthy}, redis: {condition: service_healthy}}
+    networks: [demo_backend]
+    restart: unless-stopped
+  pgvector:
+    image: pgvector/pgvector:pg17
+    env_file: [./env/.env.demo.postgres, ./env/.env.demo.keycloak-db]
+    volumes: [demo_pgvector:/var/lib/postgresql/data, ./postgres/init-keycloak-demo.sh:/docker-entrypoint-initdb.d/20-keycloak-demo.sh:ro]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"], interval: 5s, timeout: 5s, retries: 12}
+    networks: [demo_backend]
+    restart: unless-stopped
+  redis:
+    image: redis:8.0.3-alpine
+    env_file:
+      - path: ./env/.env.demo.redis
+        format: raw
+    command: [sh, -c, 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    volumes: [demo_redis:/data]
+    healthcheck: {test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"], interval: 5s, timeout: 5s, retries: 12}
+    networks: [demo_backend]
+    restart: unless-stopped
+  rabbitmq:
+    image: rabbitmq:4.1.2-management-alpine
+    # Raw mode prevents Compose from interpolating $ inside a broker password.
+    env_file:
+      - path: ./env/.env.demo.rabbitmq
+        format: raw
+    volumes: [demo_rabbitmq:/var/lib/rabbitmq]
+    healthcheck: {test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"], interval: 10s, timeout: 10s, retries: 12}
+    networks: [demo_backend]
+    restart: unless-stopped
+  qdrant:
+    image: qdrant/qdrant:v1.14.1
+    volumes: [demo_qdrant:/qdrant/storage]
+    healthcheck: {test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/6333'"], interval: 5s, timeout: 5s, retries: 12}
+    networks: [demo_backend]
+    restart: unless-stopped
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3.2
+    command: [start, --http-enabled=true, --http-port=8080, --proxy-headers=xforwarded]
+    env_file: [./env/.env.demo.keycloak]
+    expose: ["8080"]
+    healthcheck: {test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000'"], interval: 10s, timeout: 5s, retries: 12, start_period: 45s}
+    networks: [demo_backend]
+    restart: unless-stopped
+  keycloak-demo-provisioner:
+    image: quay.io/keycloak/keycloak:26.3.2
+    entrypoint: [/bin/sh]
+    command: [/opt/demo/provision-demo-realm.sh]
+    env_file: [./env/.env.demo.provisioner]
+    volumes: [./keycloak/provision-demo-realm.sh:/opt/demo/provision-demo-realm.sh:ro]
+    depends_on: {keycloak: {condition: service_healthy}}
+    networks: [demo_backend]
+    restart: "no"
+  certbot:
+    image: certbot/certbot:v3.1.0
+    profiles: [tls-bootstrap]
+    volumes: [./nginx/certs:/etc/letsencrypt, demo_acme:/var/www/certbot]
+volumes:
+  demo_pgvector: {name: mini-rag-demo_pgvector_data}
+  demo_redis: {name: mini-rag-demo_redis_data}
+  demo_qdrant: {name: mini-rag-demo_qdrant_data}
+  demo_rabbitmq: {name: mini-rag-demo_rabbitmq_data}
+  demo_assets: {name: mini-rag-demo_assets_data}
+  demo_celery_beat: {name: mini-rag-demo_celery_beat_data}
+  demo_acme: {name: mini-rag-demo_acme_data}
+networks:
+  demo_backend: {name: mini-rag-demo_backend, driver: bridge}

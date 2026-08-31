@@ -1,0 +1,6 @@
+server {
+    listen 80;
+    server_name ${DEMO_APP_DOMAIN} ${DEMO_IDP_DOMAIN};
+    location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { return 200 "TLS bootstrap active\n"; add_header Content-Type text/plain; }
+}

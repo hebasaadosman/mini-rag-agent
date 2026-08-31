@@ -38,5 +38,8 @@ src/evals/**/reports/*.json
 
 build
 dist
+frontend/node_modules
+frontend/dist
+frontend/.angular
 **/*.egg-info
 Miniconda3-latest-Linux-x86_64.sh

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from celery_app import celery_app, get_setup_utils
+from celery_app import celery_app, get_db_utils
 from models.ProjectModel import ProjectModel
 from models.db_schemes import DataChunk
 from models.enums.AssetTypeEnum import AssetTypeEnum
@@ -66,21 +66,13 @@ async def _process_project_files(
     request_metadata: dict[str, str] | None,
 ):
     db_engine = None
-    vectordb_client = None
     execution_model = None
     execution = None
 
     try:
-        (
-            db_engine,
-            db_client,
-            _,
-            _,
-            generation_client,
-            embedding_client,
-            vectordb_client,
-            template_parser,
-        ) = await get_setup_utils()
+        # Chunk extraction is database/file work only.  Do not construct an
+        # LLM or vector client here: this worker needs no provider credential.
+        db_engine, db_client = await get_db_utils()
 
         project_model = await ProjectModel.create_instance(
             db_client=db_client
@@ -444,14 +436,6 @@ async def _process_project_files(
         raise
 
     finally:
-        if vectordb_client is not None:
-            try:
-                await vectordb_client.disconnect()
-            except Exception:
-                logger.exception(
-                    "Failed to disconnect vector DB client."
-                )
-
         if db_engine is not None:
             try:
                 await db_engine.dispose()

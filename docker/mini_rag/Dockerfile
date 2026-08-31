@@ -31,6 +31,12 @@ COPY docker/mini_rag/entrypoint.sh /entrypoint.sh
 RUN sed -i 's/\r$//' /entrypoint.sh \
     && chmod +x /entrypoint.sh
 
+# The demo workers run as this unprivileged identity. The demo Compose file opts in.
+RUN groupadd --gid 10001 appuser \
+    && useradd --uid 10001 --gid appuser --create-home \
+        --shell /usr/sbin/nologin appuser \
+    && chown -R appuser:appuser /app
+
 ENTRYPOINT ["/entrypoint.sh"]
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

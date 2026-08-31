@@ -16,7 +16,9 @@ class Settings(BaseSettings):
     APP_NAME: str
     APP_VERSION: str
     APP_ENV: str = "local"
-    OPENAI_API_KEY: str
+    # Background services that do not call a provider must not receive this
+    # secret. Provider-using services still validate it in their own runtime.
+    OPENAI_API_KEY: str = ""
     FILE_ALLOWED_TYPES: list[str]
     FILE_MAX_SIZE: int
     FILE_DEFAULT_CHUNK_SIZE: int
@@ -24,17 +26,17 @@ class Settings(BaseSettings):
     MONGODB_NAME: str 
     GENERATION_BACKEND: str
     EMBEDDING_BACKEND: str
-    OPENAI_KEY: str=None
-    OPENAI_API_URL: str=None
-    COHERE_API_KEY: str=None
+    OPENAI_KEY: Optional[str] = None
+    OPENAI_API_URL: Optional[str] = None
+    COHERE_API_KEY: Optional[str] = None
     GENEERATION_MODEL_ID: str
-    GENEERATION_MODEL_ID_LITERAL: List[str]=None
-    EMBEDDING_MODEL_ID: str=None
-    EMBEDDING_MODEL_TEMPERATURE: float=None
-    INPUT_DEFAULT_MAX_CHARACTERS: int=None
-    GENERATION_DEFAULT_MAX_TOKENS: int=None
-    EMBEDDING_MODEL_SIZE: int
-    VECTOR_DB_BACKEND_LITERAL: List[str]=None
+    GENEERATION_MODEL_ID_LITERAL: Optional[List[str]] = None
+    EMBEDDING_MODEL_ID: Optional[str] = None
+    EMBEDDING_MODEL_TEMPERATURE: Optional[float] = None
+    INPUT_DEFAULT_MAX_CHARACTERS: Optional[int] = None
+    GENERATION_DEFAULT_MAX_TOKENS: Optional[int] = None
+    EMBEDDING_MODEL_SIZE: int = 1536
+    VECTOR_DB_BACKEND_LITERAL: Optional[List[str]] = None
     VECTOR_DB_PGVEC_INDEX_THRESHOLD: int=100
     VECTOR_DB_BACKEND: str
     VECTOR_DB_PATH: str
