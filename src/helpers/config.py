@@ -100,6 +100,10 @@ class Settings(BaseSettings):
     AUTH_COOKIE_SAMESITE: str = "lax"
     AUTH_FRONTEND_SUCCESS_URL: str = "/"
 
+    # Browser SPA origins allowed to call this API with BFF session cookies.
+    # Keep this explicit: credentialed CORS must never use a wildcard origin.
+    CORS_ALLOWED_ORIGINS: list[str] = []
+
     AUTH_OIDC_ISSUER: Optional[str] = None
     AUTH_OIDC_CLIENT_ID: Optional[str] = None
     AUTH_OIDC_CLIENT_SECRET: Optional[str] = None

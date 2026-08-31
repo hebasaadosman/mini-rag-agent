@@ -7,6 +7,7 @@ from helpers.config import (
     Settings,
     ensure_production_authorization_enabled,
 )
+from helpers.cors import configure_browser_cors
 from stores.llm.LLMProviderFactory import LLMProviderFactory
 from stores.vectordb.VectorDBProviderFactory import VectorDBProviderFactory
 from stores.llm.templates.template_parser import TemplateParser
@@ -38,6 +39,8 @@ settings = get_settings()
 
 configure_langsmith(settings)
 app = FastAPI()
+app.settings = settings
+configure_browser_cors(app, settings)
 
 @app.on_event("startup")
 async def startup_db_client():

@@ -13,6 +13,10 @@ Production browser authentication uses **OIDC Authorization Code Flow with PKCE*
 
 `POST`, `PUT`, `PATCH`, and `DELETE` requests additionally require the CSRF cookie value in the configured CSRF request header. The backend validates both values against the server-side session.
 
+For a separately hosted browser SPA, configure an exact value in
+`CORS_ALLOWED_ORIGINS` and enable credentialed requests in the frontend. The
+application refuses wildcard origins when credentialed CORS is configured.
+
 ## Development bearer mode
 
 Manual JWT entry is not a production login mechanism. It is allowed only when all of the following are true:
@@ -43,6 +47,7 @@ Production must use `AUTH_MODE=bff_oidc` and keep `AUTH_DEVELOPMENT_MANUAL_TOKEN
 | `AUTH_SESSION_ABSOLUTE_TIMEOUT_SECONDS` | Maximum session lifetime. |
 | `AUTH_COOKIE_SECURE=true` | Requires HTTPS cookies in production. |
 | `AUTH_FRONTEND_SUCCESS_URL` | Safe post-login frontend URL. |
+| `CORS_ALLOWED_ORIGINS` | Explicit trusted browser SPA origins allowed to send credentialed BFF requests. |
 | `AUTH_OIDC_ISSUER` | Exact OIDC issuer URL. |
 | `AUTH_OIDC_CLIENT_ID` | Registered OIDC client ID. |
 | `AUTH_OIDC_CLIENT_SECRET` | Optional confidential-client secret; store only in deployment secrets. |
