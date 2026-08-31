@@ -18,6 +18,9 @@ class BrowserSession:
     created_at: int
     expires_at: int
     absolute_expires_at: int
+    idle_timeout_seconds: int
+    kind: str = "user"
+    demo_project_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,7 +32,11 @@ class OIDCLoginTransaction:
 
 
 class SessionStore(Protocol):
-    async def create_session(self, *, subject: str, roles: tuple[str, ...]) -> BrowserSession: ...
+    async def create_session(
+        self, *, subject: str, roles: tuple[str, ...], kind: str = "user",
+        demo_project_id: int | None = None, idle_timeout_seconds: int | None = None,
+        absolute_timeout_seconds: int | None = None,
+    ) -> BrowserSession: ...
     async def get_session(self, session_id: str) -> BrowserSession | None: ...
     async def delete_session(self, session_id: str) -> None: ...
     async def create_transaction(self) -> OIDCLoginTransaction: ...
@@ -55,16 +62,39 @@ class InMemorySessionStore:
         self._sessions: dict[str, BrowserSession] = {}
         self._transactions: dict[str, OIDCLoginTransaction] = {}
 
-    async def create_session(self, *, subject: str, roles: tuple[str, ...]) -> BrowserSession:
+    async def create_session(
+        self, *, subject: str, roles: tuple[str, ...], kind: str = "user",
+        demo_project_id: int | None = None, idle_timeout_seconds: int | None = None,
+        absolute_timeout_seconds: int | None = None,
+    ) -> BrowserSession:
+        if kind not in {"user", "demo"}:
+            raise ValueError("session kind is invalid.")
+        if kind == "demo" and (not isinstance(demo_project_id, int) or demo_project_id < 1):
+            raise ValueError("demo sessions require a valid project identifier.")
+        if kind != "demo" and demo_project_id is not None:
+            raise ValueError("only demo sessions may have a demo project.")
         now = self._clock()
+        session_idle_timeout = (
+            self._idle_timeout if idle_timeout_seconds is None else idle_timeout_seconds
+        )
+        session_absolute_timeout = (
+            self._absolute_timeout
+            if absolute_timeout_seconds is None
+            else absolute_timeout_seconds
+        )
+        if session_idle_timeout < 1 or session_absolute_timeout < 1:
+            raise ValueError("session timeouts must be positive.")
         session = BrowserSession(
             session_id=secrets.token_urlsafe(32),
             subject=subject,
             roles=roles,
             csrf_token=secrets.token_urlsafe(32),
             created_at=now,
-            expires_at=now + self._idle_timeout,
-            absolute_expires_at=now + self._absolute_timeout,
+            expires_at=now + session_idle_timeout,
+            absolute_expires_at=now + session_absolute_timeout,
+            idle_timeout_seconds=session_idle_timeout,
+            kind=kind,
+            demo_project_id=demo_project_id,
         )
         self._sessions[session.session_id] = session
         return session
@@ -80,7 +110,7 @@ class InMemorySessionStore:
         refreshed = BrowserSession(
             **{
                 **asdict(session),
-                "expires_at": min(now + self._idle_timeout, session.absolute_expires_at),
+                "expires_at": min(now + session.idle_timeout_seconds, session.absolute_expires_at),
             }
         )
         self._sessions[session_id] = refreshed
@@ -121,8 +151,8 @@ class RedisSessionStore(InMemorySessionStore):
         super().__init__(**kwargs)
         self._redis = redis_client
 
-    async def create_session(self, *, subject: str, roles: tuple[str, ...]) -> BrowserSession:
-        session = await super().create_session(subject=subject, roles=roles)
+    async def create_session(self, **kwargs) -> BrowserSession:
+        session = await super().create_session(**kwargs)
         await self._save_session(session)
         return session
 
@@ -141,7 +171,7 @@ class RedisSessionStore(InMemorySessionStore):
             **{
                 **asdict(session),
                 "roles": tuple(session.roles),
-                "expires_at": min(now + self._idle_timeout, session.absolute_expires_at),
+                "expires_at": min(now + session.idle_timeout_seconds, session.absolute_expires_at),
             }
         )
         await self._save_session(refreshed)

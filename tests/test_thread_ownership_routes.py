@@ -81,6 +81,11 @@ class _Controller:
         return await self.chat(**kwargs)
 
 
+class _DemoLimiter:
+    async def require_capacity(self, _principal_id):
+        return None
+
+
 class ThreadOwnershipRouteTests(unittest.TestCase):
     def setUp(self):
         self.roles = {
@@ -91,11 +96,15 @@ class ThreadOwnershipRouteTests(unittest.TestCase):
         self.memberships = _Memberships(self.roles)
         self.subject = "owner"
         self.roles_claim = ()
+        self.principal_kind = "user"
+        self.demo_project_id = None
         app = FastAPI()
         app.project_authorizer = ProjectAuthorizer(self.memberships)
         app.conversation_thread_model = _Threads(self.memberships)
         app.agent_thread_locks = _Locks()
         app.multi_agent_controller = _Controller()
+        app.demo_multi_agent_controller = _Controller()
+        app.demo_agent_rate_limiter = _DemoLimiter()
         app.audit_logger = SimpleNamespace(record=self._record)
         app.dependency_overrides[get_settings] = lambda: SimpleNamespace(
             AUTH_ENABLED=True, AUTHZ_ENABLED=True
@@ -103,7 +112,12 @@ class ThreadOwnershipRouteTests(unittest.TestCase):
         self.original_principal = authorization_dependencies.get_current_principal
 
         async def principal(*_args, **_kwargs):
-            return CurrentPrincipal(self.subject, self.roles_claim)
+            return CurrentPrincipal(
+                self.subject,
+                self.roles_claim,
+                kind=self.principal_kind,
+                demo_project_id=self.demo_project_id,
+            )
 
         authorization_dependencies.get_current_principal = principal
         app.include_router(agents_router)
@@ -151,6 +165,16 @@ class ThreadOwnershipRouteTests(unittest.TestCase):
 
     def test_legacy_checkpoint_without_an_ownership_row_cannot_resume(self):
         self.assertEqual(self._resume(thread_id="legacy-thread").status_code, 403)
+
+    def test_demo_session_cannot_escape_workspace_or_another_demo_thread(self):
+        self.subject = "demo-one"
+        self.principal_kind, self.demo_project_id = "demo", 1
+        self.roles[(1, self.subject)] = "viewer"
+        self.assertEqual(self._chat(thread_id="demo-private").status_code, 200)
+        self.assertEqual(self._chat(project_id=2, thread_id="demo-private").status_code, 403)
+        self.subject = "demo-two"
+        self.roles[(1, self.subject)] = "viewer"
+        self.assertEqual(self._resume(thread_id="demo-private").status_code, 403)
 
 
 class ThreadOwnershipConcurrencyTests(unittest.IsolatedAsyncioTestCase):

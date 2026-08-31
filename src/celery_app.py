@@ -82,6 +82,7 @@ celery_app = Celery(
         "tasks.file_processing",
         "tasks.index_processing",
         "tasks.maintenance",
+        "tasks.demo_cleanup",
     ]
 )
 
@@ -120,6 +121,7 @@ celery_app.conf.update(
         "tasks.maintenance.cleanup_task_executions": {
         "queue": "maintenance",
       },
+        "tasks.demo_cleanup.cleanup_expired_demo_memberships": {"queue": "maintenance"},
     },
     beat_schedule={
         "cleanup-old-task-executions-daily": {
@@ -135,6 +137,11 @@ celery_app.conf.update(
             "options": {
                 "queue": "maintenance",
             },
+        },
+        "cleanup-expired-demo-memberships": {
+            "task": "tasks.demo_cleanup.cleanup_expired_demo_memberships",
+            "schedule": 900.0,
+            "options": {"queue": "maintenance"},
         },
     },
 )

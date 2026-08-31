@@ -5,6 +5,10 @@ from sqlalchemy.future import select
 from sqlalchemy import func
 
 
+class ProjectLimitExceeded(ValueError):
+    """A public-demo account exceeded its project quota."""
+
+
 class ProjectModel(BaseDataModel):
     def __init__(self, db_client):
         super().__init__(db_client)
@@ -32,11 +36,20 @@ class ProjectModel(BaseDataModel):
         *,
         description: str | None,
         creator_principal_id: str,
+        max_projects_per_creator: int | None = None,
     ) -> Project:
         """Provision the project and its first admin as one transaction."""
         project = Project(project_description=description)
         async with self.db_client() as session:
             async with session.begin():
+                if max_projects_per_creator is not None:
+                    project_count = await session.scalar(
+                        select(func.count()).select_from(ProjectMembership).where(
+                            ProjectMembership.principal_id == creator_principal_id
+                        )
+                    )
+                    if project_count >= max_projects_per_creator:
+                        raise ProjectLimitExceeded(max_projects_per_creator)
                 session.add(project)
                 await session.flush()
                 session.add(
@@ -107,4 +120,12 @@ class ProjectModel(BaseDataModel):
             )
 
             result = await session.execute(query)
+            return result.scalar_one_or_none()
+
+    async def get_project_by_description(self, description: str) -> Project | None:
+        """Return the one deterministic workspace selected by a deployment."""
+        async with self.db_client() as session:
+            result = await session.execute(
+                select(Project).where(Project.project_description == description)
+            )
             return result.scalar_one_or_none()

@@ -83,7 +83,12 @@ async def authenticate_browser_session(request: Request, settings: Settings) -> 
         if not hmac.compare_digest(session.csrf_token, cookie_token):
             raise _csrf_rejected()
     request.state.auth_session_id = session.session_id
-    return CurrentPrincipal(subject=session.subject, roles=session.roles)
+    return CurrentPrincipal(
+        subject=session.subject,
+        roles=session.roles,
+        kind=session.kind,
+        demo_project_id=session.demo_project_id,
+    )
 
 
 def authenticate_bearer_credentials(

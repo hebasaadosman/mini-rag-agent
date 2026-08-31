@@ -34,6 +34,7 @@ from utils.async_keyed_lock import PostgresAdvisoryKeyedLock
 from infrastructure.email import create_send_email_tool
 from authentication import OIDCClient, OIDCConfiguration, RedisSessionStore
 from authentication.session_url import resolve_auth_session_redis_url
+from authentication.demo_limits import DemoAgentRateLimiter
 from redis import asyncio as redis_asyncio
 settings = get_settings()
 
@@ -159,6 +160,26 @@ async def startup_db_client():
         runtime=app.multi_agent_runtime,
         project_model=app.project_model,
     )
+    if settings.DEMO_PUBLIC_MODE:
+        has_static_id = isinstance(settings.DEMO_PROJECT_ID, int) and settings.DEMO_PROJECT_ID > 0
+        if not has_static_id and not (settings.DEMO_PROJECT_MARKER or "").strip():
+            raise RuntimeError("DEMO_PROJECT_MARKER or DEMO_PROJECT_ID is required when DEMO_PUBLIC_MODE is enabled.")
+        # The demo runtime intentionally receives no delivery tool. It keeps
+        # routing and HITL intact while making any email request fail closed.
+        demo_runtime = llm_provider_factory.create_multi_agent_runtime(
+            llm_provider=app.generation_client,
+            knowledge_agent_factory=app.knowledge_agent_controller.build_agent,
+            checkpointer=app.checkpointer,
+            max_memory_messages=app.agent_memory_max_messages,
+        )
+        app.demo_multi_agent_controller = MultiAgentController(
+            runtime=demo_runtime,
+            project_model=app.project_model,
+        )
+        app.demo_agent_rate_limiter = DemoAgentRateLimiter(
+            app.auth_redis,
+            limit=settings.DEMO_AGENT_REQUESTS_PER_MINUTE,
+        )
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

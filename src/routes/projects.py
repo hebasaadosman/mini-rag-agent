@@ -10,6 +10,7 @@ from authentication.dependencies import get_current_principal
 from auditing import AuditAction, AuditOutcome, create_audit_event
 from authorization import ProjectAccess, ProjectPermission, ProjectRole
 from authorization.dependencies import require_project_permission
+from models.ProjectModel import ProjectLimitExceeded
 
 
 projects_router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
@@ -45,10 +46,26 @@ async def create_project(
     principal: Annotated[CurrentPrincipal, Depends(get_current_principal)],
 ) -> ProjectResponse:
     """Create a project and make its authenticated creator the first admin."""
-    project = await request.app.project_model.create_project_with_creator_admin(
-        description=payload.description,
-        creator_principal_id=principal.subject,
-    )
+    if principal.is_demo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Public demo sessions cannot create projects.",
+        )
+    try:
+        project = await request.app.project_model.create_project_with_creator_admin(
+            description=payload.description,
+            creator_principal_id=principal.subject,
+            max_projects_per_creator=(
+                request.app.settings.DEMO_MAX_PROJECTS_PER_PRINCIPAL
+                if request.app.settings.DEMO_PUBLIC_MODE
+                else None
+            ),
+        )
+    except ProjectLimitExceeded as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"The public-demo project limit is {exc.args[0]} projects.",
+        ) from exc
     await request.app.audit_logger.record(
         create_audit_event(
             principal_id=principal.subject,

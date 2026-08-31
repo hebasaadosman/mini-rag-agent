@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from authentication import CurrentPrincipal, InMemorySessionStore
 from helpers.config import get_settings
 from routes.auth import auth_router
+from routes.projects import projects_router
 
 
 class _Clock:
@@ -34,6 +35,9 @@ def _settings(**overrides):
         "AUTH_CSRF_HEADER_NAME": "X-CSRF-Token", "AUTH_COOKIE_SECURE": False,
         "AUTH_COOKIE_SAMESITE": "lax", "AUTH_OIDC_TRANSACTION_TTL_SECONDS": 600,
         "AUTH_SESSION_ABSOLUTE_TIMEOUT_SECONDS": 28_800, "AUTH_FRONTEND_SUCCESS_URL": "/",
+        "DEMO_PUBLIC_MODE": True, "DEMO_PROJECT_ID": 9,
+        "DEMO_SESSION_IDLE_TIMEOUT_SECONDS": 10,
+        "DEMO_SESSION_ABSOLUTE_TIMEOUT_SECONDS": 20,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -42,9 +46,23 @@ def _settings(**overrides):
 def _test_app(store, settings=None):
     app = FastAPI()
     app.auth_session_store, app.oidc_client = store, _FakeOIDCClient()
+    app.project_model = SimpleNamespace(get_project_by_id=_project_exists)
+    app.project_membership_model = _Memberships()
     app.include_router(auth_router)
     app.dependency_overrides[get_settings] = lambda: settings or _settings()
     return app
+
+
+async def _project_exists(project_id):
+    return object() if project_id == 9 else None
+
+
+class _Memberships:
+    def __init__(self): self.roles = {}
+    async def grant_role(self, *, project_id, principal_id, role):
+        self.roles[(project_id, principal_id)] = role
+    async def revoke_role(self, *, project_id, principal_id):
+        return self.roles.pop((project_id, principal_id), None)
 
 
 class BFFAuthenticationTests(unittest.TestCase):
@@ -85,7 +103,39 @@ class BFFAuthenticationTests(unittest.TestCase):
         client = TestClient(_test_app(store)); client.cookies.set("mini_rag_session", session.session_id)
         response = client.get("/api/v1/auth/me")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"subject": "employee-42", "roles": ["platform_admin"]})
+        self.assertEqual(
+            response.json(),
+            {"subject": "employee-42", "roles": ["platform_admin"], "kind": "user", "demo_project_id": None},
+        )
+
+    def test_demo_session_is_opaque_scoped_and_short_lived(self):
+        clock = _Clock()
+        store = InMemorySessionStore(clock=clock.now)
+        app = _test_app(store)
+        client = TestClient(app)
+        response = client.post("/api/v1/auth/demo")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["kind"], "demo")
+        self.assertEqual(payload["demo_project_id"], 9)
+        self.assertNotIn("token", payload)
+        session = asyncio.run(store.get_session(client.cookies.get("mini_rag_session")))
+        self.assertEqual(session.kind, "demo")
+        self.assertEqual(session.demo_project_id, 9)
+        self.assertEqual(session.absolute_expires_at - session.created_at, 20)
+        self.assertEqual(app.project_membership_model.roles[(9, session.subject)], "viewer")
+
+    def test_demo_session_cannot_create_projects(self):
+        app = _test_app(InMemorySessionStore())
+        app.include_router(projects_router)
+        client = TestClient(app)
+        self.assertEqual(client.post("/api/v1/auth/demo").status_code, 200)
+        response = client.post(
+            "/api/v1/projects",
+            json={"description": "must be denied"},
+            headers={"X-CSRF-Token": client.cookies.get("mini_rag_csrf")},
+        )
+        self.assertEqual(response.status_code, 403)
 
     def test_login_state_cookie_must_match_callback_state(self):
         client = TestClient(_test_app(InMemorySessionStore()), follow_redirects=False)

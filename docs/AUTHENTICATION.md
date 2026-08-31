@@ -61,6 +61,20 @@ Production must use `AUTH_MODE=bff_oidc` and keep `AUTH_DEVELOPMENT_MANUAL_TOKEN
 
 Do not set a provider URL, client secret, redirect URI, or production cookie setting in committed source code. The implementation is provider-neutral OIDC; Keycloak is only suitable as a local development provider.
 
+## Restricted public demo sessions
+
+`DEMO_PUBLIC_MODE=true` exposes `POST /api/v1/auth/demo`. It creates a new random
+server-side principal and the same HttpOnly BFF session cookies used by OIDC; no
+credential, bearer token, refresh token, or shared Keycloak account reaches the browser.
+
+It requires `DEMO_PROJECT_ID` (an existing preloaded/indexed project),
+`DEMO_SESSION_IDLE_TIMEOUT_SECONDS`, `DEMO_SESSION_ABSOLUTE_TIMEOUT_SECONDS`, and
+`DEMO_AGENT_REQUESTS_PER_MINUTE`. The server grants the unique principal a normal
+`viewer` membership only in that project. Authorization still denies all writes,
+project/member administration, other projects, and threads not owned by that
+principal. Demo chat uses a runtime without the email-delivery tool; normal SSO
+sessions and their roles are unchanged.
+
 ## Deployment secret
 
 GitHub Actions requires the protected environment secret

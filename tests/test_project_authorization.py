@@ -68,6 +68,24 @@ class ProjectAuthorizerTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(access.role, ProjectRole.ADMIN)
 
+    async def test_demo_principal_is_read_only_and_scoped_to_its_workspace(self):
+        authorizer = ProjectAuthorizer(_MembershipReader({(7, "demo-1"): "viewer"}))
+        principal = CurrentPrincipal(
+            subject="demo-1", kind="demo", demo_project_id=7
+        )
+        access = await authorizer.require_permission(
+            principal=principal, project_id=7, permission=ProjectPermission.READ
+        )
+        self.assertEqual(access.role, ProjectRole.VIEWER)
+        with self.assertRaises(ProjectAccessDenied):
+            await authorizer.require_permission(
+                principal=principal, project_id=7, permission=ProjectPermission.WRITE
+            )
+        with self.assertRaises(ProjectAccessDenied):
+            await authorizer.require_permission(
+                principal=principal, project_id=8, permission=ProjectPermission.READ
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

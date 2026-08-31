@@ -32,6 +32,7 @@ class ProjectAccess:
     role: ProjectRole | None
     permission: ProjectPermission
     enforced: bool = True
+    principal_kind: str = "user"
 
 
 class ProjectAccessDenied(PermissionError):
@@ -70,6 +71,14 @@ class ProjectAuthorizer:
         if not isinstance(project_id, int) or project_id < 1:
             raise ProjectAccessDenied("The project identifier is invalid.")
 
+        # Demo scope is a narrow capability, not an authorization bypass. The
+        # normal membership lookup below remains mandatory for every request.
+        if principal.is_demo and (
+            project_id != principal.demo_project_id
+            or permission is not ProjectPermission.READ
+        ):
+            raise ProjectAccessDenied("The demo principal cannot access this project.")
+
         # A trusted identity provider can issue this narrowly controlled
         # operational role. It is not derived from user input or the LLM.
         if "platform_admin" in principal.roles:
@@ -78,6 +87,7 @@ class ProjectAuthorizer:
                 principal_id=principal.subject,
                 role=ProjectRole.ADMIN,
                 permission=permission,
+                principal_kind=principal.kind,
             )
 
         raw_role = await self._membership_reader.get_role(
@@ -97,4 +107,5 @@ class ProjectAuthorizer:
             principal_id=principal.subject,
             role=role,
             permission=permission,
+            principal_kind=principal.kind,
         )

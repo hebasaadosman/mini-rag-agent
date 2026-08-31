@@ -9,3 +9,9 @@ class CurrentPrincipal:
 
     subject: str
     roles: tuple[str, ...] = ()
+    kind: str = "user"
+    demo_project_id: int | None = None
+
+    @property
+    def is_demo(self) -> bool:
+        return self.kind == "demo"

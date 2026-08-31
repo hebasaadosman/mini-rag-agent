@@ -29,6 +29,7 @@ from models.ConversationThreadModel import (
 )
 from authorization import ProjectAccess, ProjectPermission
 from authorization.dependencies import require_project_permission
+from authentication.demo_limits import DemoRateLimitExceeded
 
 
 agents_router = APIRouter(
@@ -83,6 +84,36 @@ async def _thread_access(
         ) from None
 
 
+async def _require_demo_agent_capacity(request: Request, access: ProjectAccess) -> None:
+    if access.principal_kind != "demo":
+        return
+    limiter = getattr(request.app, "demo_agent_rate_limiter", None)
+    if limiter is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Public demo limits are not configured.",
+        )
+    try:
+        await limiter.require_capacity(access.principal_id)
+    except DemoRateLimitExceeded:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="The public demo request limit has been reached. Please try again shortly.",
+        ) from None
+
+
+def _multi_agent_controller(request: Request, access: ProjectAccess):
+    if access.principal_kind == "demo":
+        controller = getattr(request.app, "demo_multi_agent_controller", None)
+        if controller is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Public demo chat is not configured.",
+            )
+        return controller
+    return request.app.multi_agent_controller
+
+
 @agents_router.post(
     "/{project_id}/chat",
     response_model=MultiAgentResponse,
@@ -95,6 +126,7 @@ async def chat_with_multi_agent(
     payload: MultiAgentChatRequest,
     project_access: ProjectReadAccess,
 ):
+    await _require_demo_agent_capacity(request, project_access)
     lock_key = (
         f"multi-agent:{project_id}:{payload.thread_id}"
     )
@@ -105,7 +137,7 @@ async def chat_with_multi_agent(
             thread_id=payload.thread_id,
             allow_create=True,
         )
-        return await request.app.multi_agent_controller.chat(
+        return await _multi_agent_controller(request, project_access).chat(
             project_id=project_id,
             thread_id=payload.thread_id,
             message=payload.message,
@@ -127,6 +159,7 @@ async def resume_multi_agent_chat(
     payload: MultiAgentResumeRequest,
     project_access: ProjectReadAccess,
 ):
+    await _require_demo_agent_capacity(request, project_access)
     lock_key = (
         f"multi-agent:{project_id}:{payload.thread_id}"
     )
@@ -137,7 +170,7 @@ async def resume_multi_agent_chat(
             thread_id=payload.thread_id,
             allow_create=False,
         )
-        return await request.app.multi_agent_controller.resume(
+        return await _multi_agent_controller(request, project_access).resume(
             project_id=project_id,
             thread_id=payload.thread_id,
             response=payload.response,

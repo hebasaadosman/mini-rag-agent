@@ -116,6 +116,18 @@ class Settings(BaseSettings):
     AUTH_OIDC_ALLOWED_ALGORITHMS: str = "RS256,ES256"
     AUTH_OIDC_TRANSACTION_TTL_SECONDS: int = 600
 
+    # Public-demo guardrails. They are explicit opt-in so local development
+    # and authenticated internal deployments keep their current behavior.
+    DEMO_PUBLIC_MODE: bool = False
+    DEMO_MAX_PROJECTS_PER_PRINCIPAL: int = 3
+    DEMO_PROJECT_ID: Optional[int] = None
+    # Stable description written by the demo provisioner.  The BFF resolves it
+    # at runtime, so a fresh deployment never needs a hand-edited numeric ID.
+    DEMO_PROJECT_MARKER: Optional[str] = None
+    DEMO_SESSION_IDLE_TIMEOUT_SECONDS: int = 600
+    DEMO_SESSION_ABSOLUTE_TIMEOUT_SECONDS: int = 1800
+    DEMO_AGENT_REQUESTS_PER_MINUTE: int = 6
+
     # Outbound email. Credentials are consumed only by the SMTP adapter and
     # are never placed in agent state, prompts, or tool-call arguments.
     SMTP_ENABLED: bool = False
