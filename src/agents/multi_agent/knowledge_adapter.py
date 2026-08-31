@@ -2,6 +2,7 @@ from collections.abc import Callable
 from typing import Any, Protocol
 
 from agents.knowledge_agent.prompts import KNOWLEDGE_AGENT_SYSTEM_PROMPT
+from agents.knowledge_agent.sources import extract_grounded_sources
 
 from .state import AgentName, MultiAgentState, TaskStatus
 
@@ -330,11 +331,15 @@ class KnowledgeSpecialistAdapter:
             "used_chunk_ids": KnowledgeSpecialistAdapter._chunk_ids(
                 result.get("used_chunk_ids")
             ),
-            "sources": (
-                result.get("sources")
-                if isinstance(result.get("sources"), list)
-                else []
-            ),
+            "sources": [
+                source.model_dump(mode="json")
+                for source in extract_grounded_sources(
+                    tool_history=result.get("tool_history") or [],
+                    used_chunk_ids=KnowledgeSpecialistAdapter._chunk_ids(
+                        result.get("used_chunk_ids")
+                    ),
+                )
+            ],
             "memory_message_count": KnowledgeSpecialistAdapter._safe_int(
                 result.get("memory_message_count")
             ),

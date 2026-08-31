@@ -162,6 +162,46 @@ class KnowledgeSpecialistAdapterTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_completed_result_returns_only_cited_retrieval_sources(self):
+        core = _FakeKnowledgeAgent(
+            run_result={
+                "success": True,
+                "status": "completed",
+                "answer": "The policy allows two remote days.",
+                "used_chunk_ids": [11, 999],
+                "tool_history": [
+                    {
+                        "tool_name": "search_project_chunks",
+                        "execution_result": {
+                            "success": True,
+                            "result": {
+                                "success": True,
+                                "results": [{
+                                    "asset_id": 4,
+                                    "asset_name": "policy.pdf",
+                                    "chunk_id": 11,
+                                    "score": 0.91,
+                                }],
+                            },
+                        },
+                    }
+                ],
+            }
+        )
+        adapter = KnowledgeSpecialistAdapter(agent_factory=_Factory(core))
+
+        update = await adapter.run(_state())
+
+        self.assertEqual(
+            update["final_response"]["sources"],
+            [{
+                "asset_id": 4,
+                "asset_name": "policy.pdf",
+                "chunk_id": 11,
+                "score": 0.91,
+            }],
+        )
+
     async def test_clarification_result_saves_resume_target(self):
         core = _FakeKnowledgeAgent(
             run_result={
