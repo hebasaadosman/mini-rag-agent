@@ -100,7 +100,9 @@ services:
       - path: ./env/.env.demo.rabbitmq
         format: raw
     volumes: [demo_rabbitmq:/var/lib/rabbitmq]
-    healthcheck: {test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"], interval: 10s, timeout: 10s, retries: 12}
+    # A fresh RabbitMQ data volume can take just over two minutes to finish its
+    # first boot.  Do not mark dependent workers failed during that bootstrap.
+    healthcheck: {test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"], interval: 10s, timeout: 10s, retries: 12, start_period: 2m}
     networks: [demo_backend]
     restart: unless-stopped
   qdrant:
