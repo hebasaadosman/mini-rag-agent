@@ -151,6 +151,7 @@ jobs:
     needs: validate-and-build
     env:
       RELEASE_SHA: ${{ needs.validate-and-build.outputs.release_sha }}
+      DEPLOY_ATTEMPT_ID: ${{ github.run_id }}-${{ github.run_attempt }}
       DEMO_TLS_MODE: ${{ inputs.mode }}
       DEMO_HOST: ${{ secrets.DEMO_HOST }}
       DEMO_USER: ${{ secrets.DEMO_USER }}
@@ -221,7 +222,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           scp "$RUNNER_TEMP/demo-release.tgz" \
-            "${DEMO_USER}@${DEMO_HOST}:/tmp/mini-rag-demo-${RELEASE_SHA}.tgz"
+            "${DEMO_USER}@${DEMO_HOST}:/tmp/mini-rag-demo-${RELEASE_SHA}-${DEPLOY_ATTEMPT_ID}.tgz"
 
       - name: Apply, smoke test, and mark known-good only on success
         shell: bash
@@ -257,16 +258,17 @@ jobs:
             printf -v "$name" '%s' "$(printf '%s' "${!name}" | base64 -w0)"
           done
           ssh "${DEMO_USER}@${DEMO_HOST}" \
-            "RELEASE_SHA='$RELEASE_SHA' DEMO_APP_IMAGE='$DEMO_APP_IMAGE' DEMO_FRONTEND_IMAGE='$DEMO_FRONTEND_IMAGE' DEMO_TLS_MODE='$DEMO_TLS_MODE' DEMO_DEPLOY_PATH='$DEMO_DEPLOY_PATH' DEMO_TARGET_MARKER='$DEMO_TARGET_MARKER' DEMO_GHCR_USERNAME='$DEMO_GHCR_USERNAME' DEMO_GHCR_READ_TOKEN='$DEMO_GHCR_READ_TOKEN' DEMO_ENV_NGINX_B64='$DEMO_ENV_NGINX_B64' DEMO_ENV_RUNTIME_B64='$DEMO_ENV_RUNTIME_B64' DEMO_ENV_POSTGRES_B64='$DEMO_ENV_POSTGRES_B64' DEMO_ENV_KEYCLOAK_DB_B64='$DEMO_ENV_KEYCLOAK_DB_B64' DEMO_ENV_KEYCLOAK_B64='$DEMO_ENV_KEYCLOAK_B64' DEMO_ENV_PROVISIONER_B64='$DEMO_ENV_PROVISIONER_B64' DEMO_ENV_PROVISIONER_RUNTIME_B64='$DEMO_ENV_PROVISIONER_RUNTIME_B64' DEMO_ENV_RABBITMQ_B64='$DEMO_ENV_RABBITMQ_B64' DEMO_ENV_REDIS_B64='$DEMO_ENV_REDIS_B64' DEMO_ENV_APP_B64='$DEMO_ENV_APP_B64' DEMO_ENV_WORKER_FILE_B64='$DEMO_ENV_WORKER_FILE_B64' DEMO_ENV_WORKER_INDEX_B64='$DEMO_ENV_WORKER_INDEX_B64' DEMO_ENV_WORKER_MAINTENANCE_B64='$DEMO_ENV_WORKER_MAINTENANCE_B64' bash -s" <<'REMOTE'
+            "RELEASE_SHA='$RELEASE_SHA' DEPLOY_ATTEMPT_ID='$DEPLOY_ATTEMPT_ID' DEMO_APP_IMAGE='$DEMO_APP_IMAGE' DEMO_FRONTEND_IMAGE='$DEMO_FRONTEND_IMAGE' DEMO_TLS_MODE='$DEMO_TLS_MODE' DEMO_DEPLOY_PATH='$DEMO_DEPLOY_PATH' DEMO_TARGET_MARKER='$DEMO_TARGET_MARKER' DEMO_GHCR_USERNAME='$DEMO_GHCR_USERNAME' DEMO_GHCR_READ_TOKEN='$DEMO_GHCR_READ_TOKEN' DEMO_ENV_NGINX_B64='$DEMO_ENV_NGINX_B64' DEMO_ENV_RUNTIME_B64='$DEMO_ENV_RUNTIME_B64' DEMO_ENV_POSTGRES_B64='$DEMO_ENV_POSTGRES_B64' DEMO_ENV_KEYCLOAK_DB_B64='$DEMO_ENV_KEYCLOAK_DB_B64' DEMO_ENV_KEYCLOAK_B64='$DEMO_ENV_KEYCLOAK_B64' DEMO_ENV_PROVISIONER_B64='$DEMO_ENV_PROVISIONER_B64' DEMO_ENV_PROVISIONER_RUNTIME_B64='$DEMO_ENV_PROVISIONER_RUNTIME_B64' DEMO_ENV_RABBITMQ_B64='$DEMO_ENV_RABBITMQ_B64' DEMO_ENV_REDIS_B64='$DEMO_ENV_REDIS_B64' DEMO_ENV_APP_B64='$DEMO_ENV_APP_B64' DEMO_ENV_WORKER_FILE_B64='$DEMO_ENV_WORKER_FILE_B64' DEMO_ENV_WORKER_INDEX_B64='$DEMO_ENV_WORKER_INDEX_B64' DEMO_ENV_WORKER_MAINTENANCE_B64='$DEMO_ENV_WORKER_MAINTENANCE_B64' bash -s" <<'REMOTE'
           set -Eeuo pipefail
           project=mini-rag-demo
           marker="$DEMO_DEPLOY_PATH/.mini-rag-demo-target"
           state_dir="$DEMO_DEPLOY_PATH/state"
           state_file="$state_dir/last-known-good.env"
-          release_dir="$DEMO_DEPLOY_PATH/releases/$RELEASE_SHA"
-          bundle="/tmp/mini-rag-demo-$RELEASE_SHA.tgz"
+          release_root="$DEMO_DEPLOY_PATH/releases/$RELEASE_SHA"
+          release_dir="$release_root/$DEPLOY_ATTEMPT_ID"
+          bundle="/tmp/mini-rag-demo-$RELEASE_SHA-$DEPLOY_ATTEMPT_ID.tgz"
           test -f "$marker" && test "$(cat "$marker")" = "$DEMO_TARGET_MARKER" || { echo "Demo target marker is missing or incorrect." >&2; exit 1; }
-          mkdir -p "$DEMO_DEPLOY_PATH/releases" "$state_dir"
+          mkdir -p "$release_root" "$state_dir"
           test ! -e "$release_dir" || { echo "Release directory already exists; refusing to overwrite deployment metadata." >&2; exit 1; }
           mkdir -p "$release_dir"
           tar -xzf "$bundle" -C "$release_dir"; rm -f "$bundle"
@@ -276,23 +278,26 @@ jobs:
           sed -Ei "s|^DEMO_TLS_MODE=.*$|DEMO_TLS_MODE=$DEMO_TLS_MODE|" env/.env.demo.nginx
           printf 'DEMO_APP_IMAGE=%s\nDEMO_FRONTEND_IMAGE=%s\n' "$DEMO_APP_IMAGE" "$DEMO_FRONTEND_IMAGE" > .env.demo.images
           chmod 600 .env.demo.images
-          printf 'RELEASE_SHA=%s\nDEMO_APP_IMAGE=%s\nDEMO_FRONTEND_IMAGE=%s\nDEMO_TLS_MODE=%s\n' "$RELEASE_SHA" "$DEMO_APP_IMAGE" "$DEMO_FRONTEND_IMAGE" "$DEMO_TLS_MODE" > .demo-release.env
+          printf 'RELEASE_SHA=%s\nDEPLOY_ATTEMPT_ID=%s\nRELEASE_DIRECTORY=%s\nDEMO_APP_IMAGE=%s\nDEMO_FRONTEND_IMAGE=%s\nDEMO_TLS_MODE=%s\n' "$RELEASE_SHA" "$DEPLOY_ATTEMPT_ID" "$release_dir" "$DEMO_APP_IMAGE" "$DEMO_FRONTEND_IMAGE" "$DEMO_TLS_MODE" > .demo-release.env
           compose() { docker compose --project-name "$project" --env-file .env.demo.images -f docker-compose.demo.yml "$@"; }
           rollback() {
             test -s "$state_file" || { echo "No verified known-good release exists; not guessing a rollback target." >&2; return 0; }
             set -a; . "$state_file"; set +a
-            test -n "${RELEASE_SHA:-}" && test -f "$DEMO_DEPLOY_PATH/releases/$RELEASE_SHA/docker/.demo-release.env" || { echo "Known-good metadata is invalid; manual recovery required." >&2; return 0; }
+            test -n "${RELEASE_SHA:-}" && test -n "${RELEASE_DIRECTORY:-}" && test -f "$RELEASE_DIRECTORY/docker/.demo-release.env" || { echo "Known-good metadata is invalid; manual recovery required." >&2; return 0; }
             known_sha="$RELEASE_SHA"
+            known_directory="$RELEASE_DIRECTORY"
+            known_attempt="$DEPLOY_ATTEMPT_ID"
             known_app_image="$DEMO_APP_IMAGE"
             known_frontend_image="$DEMO_FRONTEND_IMAGE"
             known_mode="$DEMO_TLS_MODE"
-            cd "$DEMO_DEPLOY_PATH/releases/$known_sha/docker"
+            case "$known_directory" in "$DEMO_DEPLOY_PATH/releases/$known_sha/"*) ;; *) echo "Known-good release directory is outside the expected release root." >&2; return 0;; esac
+            cd "$known_directory/docker"
             set -a; . .demo-release.env; set +a
-            test "$RELEASE_SHA" = "$known_sha" && test "$DEMO_APP_IMAGE" = "$known_app_image" && test "$DEMO_FRONTEND_IMAGE" = "$known_frontend_image" && test "$DEMO_TLS_MODE" = "$known_mode" || { echo "Known-good release metadata does not match its state pointer." >&2; return 0; }
+            test "$RELEASE_SHA" = "$known_sha" && test "$DEPLOY_ATTEMPT_ID" = "$known_attempt" && test "$RELEASE_DIRECTORY" = "$known_directory" && test "$DEMO_APP_IMAGE" = "$known_app_image" && test "$DEMO_FRONTEND_IMAGE" = "$known_frontend_image" && test "$DEMO_TLS_MODE" = "$known_mode" || { echo "Known-good release metadata does not match its state pointer." >&2; return 0; }
             grep -Fxq "DEMO_TLS_MODE=$known_mode" env/.env.demo.nginx || { echo "Known-good Nginx environment does not match known-good deployment mode." >&2; return 0; }
             compose() { docker compose --project-name "$project" --env-file .env.demo.images -f docker-compose.demo.yml "$@"; }
             compose pull; compose up -d --no-build --force-recreate
-            echo "Restored verified known-good release $known_sha in $known_mode mode."
+            echo "Restored verified known-good release $known_sha attempt $known_attempt in $known_mode mode."
           }
           trap 'status=$?; echo "Demo apply or smoke failed." >&2; rollback || true; exit "$status"' ERR
           if [ "$DEMO_TLS_MODE" = tls ]; then
