@@ -221,7 +221,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          scp "$RUNNER_TEMP/demo-release.tgz" \
+          scp -o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes \
+            "$RUNNER_TEMP/demo-release.tgz" \
             "${DEMO_USER}@${DEMO_HOST}:/tmp/mini-rag-demo-${RELEASE_SHA}-${DEPLOY_ATTEMPT_ID}.tgz"
 
       - name: Apply, smoke test, and mark known-good only on success
@@ -257,7 +258,11 @@ jobs:
           for name in DEMO_ENV_NGINX_B64 DEMO_ENV_RUNTIME_B64 DEMO_ENV_POSTGRES_B64 DEMO_ENV_KEYCLOAK_DB_B64 DEMO_ENV_KEYCLOAK_B64 DEMO_ENV_PROVISIONER_B64 DEMO_ENV_PROVISIONER_RUNTIME_B64 DEMO_ENV_RABBITMQ_B64 DEMO_ENV_REDIS_B64 DEMO_ENV_APP_B64 DEMO_ENV_WORKER_FILE_B64 DEMO_ENV_WORKER_INDEX_B64 DEMO_ENV_WORKER_MAINTENANCE_B64; do
             printf -v "$name" '%s' "$(printf '%s' "${!name}" | base64 -w0)"
           done
-          ssh "${DEMO_USER}@${DEMO_HOST}" \
+          # Keep the Actions-to-host SSH session alive while first-start
+          # dependencies initialize; the remote command can legitimately wait
+          # several minutes for Keycloak and RabbitMQ health checks.
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes \
+            "${DEMO_USER}@${DEMO_HOST}" \
             "RELEASE_SHA='$RELEASE_SHA' DEPLOY_ATTEMPT_ID='$DEPLOY_ATTEMPT_ID' DEMO_APP_IMAGE='$DEMO_APP_IMAGE' DEMO_FRONTEND_IMAGE='$DEMO_FRONTEND_IMAGE' DEMO_TLS_MODE='$DEMO_TLS_MODE' DEMO_DEPLOY_PATH='$DEMO_DEPLOY_PATH' DEMO_TARGET_MARKER='$DEMO_TARGET_MARKER' DEMO_GHCR_USERNAME='$DEMO_GHCR_USERNAME' DEMO_GHCR_READ_TOKEN='$DEMO_GHCR_READ_TOKEN' DEMO_ENV_NGINX_B64='$DEMO_ENV_NGINX_B64' DEMO_ENV_RUNTIME_B64='$DEMO_ENV_RUNTIME_B64' DEMO_ENV_POSTGRES_B64='$DEMO_ENV_POSTGRES_B64' DEMO_ENV_KEYCLOAK_DB_B64='$DEMO_ENV_KEYCLOAK_DB_B64' DEMO_ENV_KEYCLOAK_B64='$DEMO_ENV_KEYCLOAK_B64' DEMO_ENV_PROVISIONER_B64='$DEMO_ENV_PROVISIONER_B64' DEMO_ENV_PROVISIONER_RUNTIME_B64='$DEMO_ENV_PROVISIONER_RUNTIME_B64' DEMO_ENV_RABBITMQ_B64='$DEMO_ENV_RABBITMQ_B64' DEMO_ENV_REDIS_B64='$DEMO_ENV_REDIS_B64' DEMO_ENV_APP_B64='$DEMO_ENV_APP_B64' DEMO_ENV_WORKER_FILE_B64='$DEMO_ENV_WORKER_FILE_B64' DEMO_ENV_WORKER_INDEX_B64='$DEMO_ENV_WORKER_INDEX_B64' DEMO_ENV_WORKER_MAINTENANCE_B64='$DEMO_ENV_WORKER_MAINTENANCE_B64' bash -s" <<'REMOTE'
           set -Eeuo pipefail
           project=mini-rag-demo
