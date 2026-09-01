@@ -301,7 +301,7 @@ jobs:
             test "$RELEASE_SHA" = "$known_sha" && test "$DEPLOY_ATTEMPT_ID" = "$known_attempt" && test "$RELEASE_DIRECTORY" = "$known_directory" && test "$DEMO_APP_IMAGE" = "$known_app_image" && test "$DEMO_FRONTEND_IMAGE" = "$known_frontend_image" && test "$DEMO_TLS_MODE" = "$known_mode" || { echo "Known-good release metadata does not match its state pointer." >&2; return 0; }
             grep -Fxq "DEMO_TLS_MODE=$known_mode" env/.env.demo.nginx || { echo "Known-good Nginx environment does not match known-good deployment mode." >&2; return 0; }
             compose() { docker compose --project-name "$project" --env-file .env.demo.images -f docker-compose.demo.yml "$@"; }
-            compose pull; compose up -d --no-build --force-recreate
+            compose pull; compose up -d --no-build
             echo "Restored verified known-good release $known_sha attempt $known_attempt in $known_mode mode."
           }
           trap 'status=$?; echo "Demo apply or smoke failed." >&2; rollback || true; exit "$status"' ERR
@@ -311,7 +311,7 @@ jobs:
             docker run --rm -v mini-rag-demo_tls_certs:/certs:ro alpine:3.20 sh -ec 'test -s "/certs/live/$1/fullchain.pem" && test -s "/certs/live/$1/privkey.pem"' sh "$app_domain"
           fi
           printf '%s' "$DEMO_GHCR_READ_TOKEN" | docker login ghcr.io --username "$DEMO_GHCR_USERNAME" --password-stdin
-          compose config -q; compose pull; compose up -d --no-build --force-recreate
+          compose config -q; compose pull; compose up -d --no-build
           app_domain="$(awk -F= '$1=="DEMO_APP_DOMAIN" {print $2}' env/.env.demo.nginx)"
           idp_domain="$(awk -F= '$1=="DEMO_IDP_DOMAIN" {print $2}' env/.env.demo.nginx)"
           if [ "$DEMO_TLS_MODE" = bootstrap ]; then
