@@ -151,8 +151,6 @@ jobs:
     needs: validate-and-build
     env:
       RELEASE_SHA: ${{ needs.validate-and-build.outputs.release_sha }}
-      DEMO_APP_IMAGE: ${{ needs.validate-and-build.outputs.app_image }}
-      DEMO_FRONTEND_IMAGE: ${{ needs.validate-and-build.outputs.frontend_image }}
       DEMO_TLS_MODE: ${{ inputs.mode }}
       DEMO_HOST: ${{ secrets.DEMO_HOST }}
       DEMO_USER: ${{ secrets.DEMO_USER }}
@@ -186,6 +184,21 @@ jobs:
           ref: ${{ needs.validate-and-build.outputs.release_sha }}
           fetch-depth: 1
 
+      # Recompute image references in this fresh job instead of depending on
+      # cross-job image outputs. The tag is the validated immutable SHA.
+      - name: Resolve immutable images for deployment
+        id: deploy-images
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "Deployment release SHA is invalid." >&2
+            exit 1
+          }
+          base="${REGISTRY}/${GITHUB_REPOSITORY,,}"
+          echo "app=${base}:${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "frontend=${base}-nginx:${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+
       - name: Prepare pinned SSH trust
         shell: bash
         run: |
@@ -213,6 +226,8 @@ jobs:
       - name: Apply, smoke test, and mark known-good only on success
         shell: bash
         env:
+          DEMO_APP_IMAGE: ${{ steps.deploy-images.outputs.app }}
+          DEMO_FRONTEND_IMAGE: ${{ steps.deploy-images.outputs.frontend }}
           DEMO_ENV_NGINX_B64: ${{ secrets.DEMO_ENV_NGINX }}
           DEMO_ENV_RUNTIME_B64: ${{ secrets.DEMO_ENV_RUNTIME }}
           DEMO_ENV_POSTGRES_B64: ${{ secrets.DEMO_ENV_POSTGRES }}
@@ -228,6 +243,16 @@ jobs:
           DEMO_ENV_WORKER_MAINTENANCE_B64: ${{ secrets.DEMO_ENV_WORKER_MAINTENANCE }}
         run: |
           set -Eeuo pipefail
+          expected_app="ghcr.io/${GITHUB_REPOSITORY,,}:$RELEASE_SHA"
+          expected_frontend="ghcr.io/${GITHUB_REPOSITORY,,}-nginx:$RELEASE_SHA"
+          [[ "$DEMO_APP_IMAGE" = "$expected_app" ]] || {
+            echo "Resolved application image is missing or not SHA-pinned." >&2
+            exit 1
+          }
+          [[ "$DEMO_FRONTEND_IMAGE" = "$expected_frontend" ]] || {
+            echo "Resolved frontend image is missing or not SHA-pinned." >&2
+            exit 1
+          }
           for name in DEMO_ENV_NGINX_B64 DEMO_ENV_RUNTIME_B64 DEMO_ENV_POSTGRES_B64 DEMO_ENV_KEYCLOAK_DB_B64 DEMO_ENV_KEYCLOAK_B64 DEMO_ENV_PROVISIONER_B64 DEMO_ENV_PROVISIONER_RUNTIME_B64 DEMO_ENV_RABBITMQ_B64 DEMO_ENV_REDIS_B64 DEMO_ENV_APP_B64 DEMO_ENV_WORKER_FILE_B64 DEMO_ENV_WORKER_INDEX_B64 DEMO_ENV_WORKER_MAINTENANCE_B64; do
             printf -v "$name" '%s' "$(printf '%s' "${!name}" | base64 -w0)"
           done
