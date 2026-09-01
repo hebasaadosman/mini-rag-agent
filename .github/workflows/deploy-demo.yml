@@ -177,6 +177,15 @@ jobs:
       DEMO_ENV_WORKER_MAINTENANCE: ${{ secrets.DEMO_ENV_WORKER_MAINTENANCE }}
 
     steps:
+      # Each GitHub Actions job has a fresh workspace. The deployment bundle
+      # must come from the exact reviewed revision, not from an implicit
+      # default branch checkout.
+      - name: Check out requested release for deployment bundle
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate-and-build.outputs.release_sha }}
+          fetch-depth: 1
+
       - name: Prepare pinned SSH trust
         shell: bash
         run: |
