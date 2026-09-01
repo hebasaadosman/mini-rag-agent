@@ -114,7 +114,10 @@ services:
     command: [start, --http-enabled=true, --http-port=8080, --proxy-headers=xforwarded]
     env_file: [./env/.env.demo.keycloak]
     expose: ["8080"]
-    healthcheck: {test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000'"], interval: 10s, timeout: 5s, retries: 12, start_period: 45s}
+    # The initial production augmentation on a fresh database has taken over six
+    # minutes in rehearsal.  Do not fail downstream services before it can bind
+    # its management health port; subsequent starts remain much faster.
+    healthcheck: {test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000'"], interval: 10s, timeout: 5s, retries: 12, start_period: 8m}
     networks: [demo_backend]
     restart: unless-stopped
   keycloak-demo-provisioner:
