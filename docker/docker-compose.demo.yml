@@ -103,7 +103,7 @@ services:
     # On the 8 GB host the first boot can overlap Keycloak augmentation and take
     # several minutes before diagnostics responds.  Do not fail dependents while
     # that initial persistent-volume bootstrap is still in progress.
-    healthcheck: {test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"], interval: 10s, timeout: 10s, retries: 12, start_period: 8m}
+    healthcheck: {test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"], interval: 10s, timeout: 30s, retries: 12, start_period: 8m}
     networks: [demo_backend]
     restart: unless-stopped
   qdrant:
