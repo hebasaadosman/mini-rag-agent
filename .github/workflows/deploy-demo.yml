@@ -305,7 +305,15 @@ jobs:
             compose up -d --no-build --no-deps --force-recreate nginx
             echo "Restored verified known-good release $known_sha attempt $known_attempt in $known_mode mode."
           }
-          trap 'status=$?; echo "Demo apply or smoke failed." >&2; rollback || true; exit "$status"' ERR
+          diagnose_failure() {
+            echo "Demo diagnostics before rollback:" >&2
+            compose ps --all || true
+            for service in migration keycloak-demo-provisioner demo-provisioner nginx; do
+              echo "--- $service logs (last 150 lines) ---" >&2
+              compose logs --no-color --tail=150 "$service" || true
+            done
+          }
+          trap 'status=$?; echo "Demo apply or smoke failed." >&2; diagnose_failure || true; rollback || true; exit "$status"' ERR
           if [ "$DEMO_TLS_MODE" = tls ]; then
             app_domain="$(awk -F= '$1=="DEMO_APP_DOMAIN" {print $2}' env/.env.demo.nginx)"
             docker volume inspect mini-rag-demo_tls_certs >/dev/null
