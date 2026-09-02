@@ -10,7 +10,8 @@ REALM=mini-rag
   --user "$DEMO_KEYCLOAK_ADMIN_USERNAME" \
   --password "$DEMO_KEYCLOAK_ADMIN_PASSWORD" >/dev/null
 
-if ! "$KCADM" get "realms/$REALM" >/dev/null 2>&1; then
+REALM_NAMES="$("$KCADM" get realms --fields realm --format csv --noquotes)"
+if ! printf '%s\n' "$REALM_NAMES" | grep -Fxq "$REALM"; then
   "$KCADM" create realms -s realm="$REALM" -s enabled=true -s registrationAllowed=false
 fi
 
