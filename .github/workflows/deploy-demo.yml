@@ -302,6 +302,7 @@ jobs:
             grep -Fxq "DEMO_TLS_MODE=$known_mode" env/.env.demo.nginx || { echo "Known-good Nginx environment does not match known-good deployment mode." >&2; return 0; }
             compose() { docker compose --project-name "$project" --env-file .env.demo.images -f docker-compose.demo.yml "$@"; }
             compose pull; compose up -d --no-build
+            compose up -d --no-build --no-deps --force-recreate nginx
             echo "Restored verified known-good release $known_sha attempt $known_attempt in $known_mode mode."
           }
           trap 'status=$?; echo "Demo apply or smoke failed." >&2; rollback || true; exit "$status"' ERR
@@ -312,6 +313,10 @@ jobs:
           fi
           printf '%s' "$DEMO_GHCR_READ_TOKEN" | docker login ghcr.io --username "$DEMO_GHCR_USERNAME" --password-stdin
           compose config -q; compose pull; compose up -d --no-build
+          # A failed earlier host-port bind leaves Nginx without runtime port
+          # mappings. Recreate only this stateless public edge; keep stateful
+          # services intact across retries.
+          compose up -d --no-build --no-deps --force-recreate nginx
           app_domain="$(awk -F= '$1=="DEMO_APP_DOMAIN" {print $2}' env/.env.demo.nginx)"
           idp_domain="$(awk -F= '$1=="DEMO_IDP_DOMAIN" {print $2}' env/.env.demo.nginx)"
           if [ "$DEMO_TLS_MODE" = bootstrap ]; then
