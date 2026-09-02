@@ -14,7 +14,8 @@ if ! "$KCADM" get "realms/$REALM" >/dev/null 2>&1; then
   "$KCADM" create realms -s realm="$REALM" -s enabled=true -s registrationAllowed=false
 fi
 
-if ! "$KCADM" get roles/demo_user -r "$REALM" >/dev/null 2>&1; then
+ROLE_NAMES="$("$KCADM" get roles -r "$REALM" --fields name --format csv --noquotes)"
+if ! printf '%s\n' "$ROLE_NAMES" | grep -Fxq demo_user; then
   "$KCADM" create roles -r "$REALM" -s name=demo_user -s description='Limited public demo account'
 fi
 
@@ -56,6 +57,9 @@ if [ -z "$USER_ID" ]; then
 fi
 
 "$KCADM" set-password -r "$REALM" --userid "$USER_ID" --new-password "$DEMO_USER_PASSWORD" >/dev/null
-"$KCADM" add-roles -r "$REALM" --uusername "$DEMO_USER_USERNAME" --rolename demo_user >/dev/null
+USER_ROLE_NAMES="$("$KCADM" get "users/$USER_ID/role-mappings/realm" -r "$REALM" --fields name --format csv --noquotes)"
+if ! printf '%s\n' "$USER_ROLE_NAMES" | grep -Fxq demo_user; then
+  "$KCADM" add-roles -r "$REALM" --uusername "$DEMO_USER_USERNAME" --rolename demo_user >/dev/null
+fi
 
 echo "Demo realm provisioned without platform_admin."
