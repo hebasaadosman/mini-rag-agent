@@ -19,7 +19,16 @@ if ! printf '%s\n' "$ROLE_NAMES" | grep -Fxq demo_user; then
   "$KCADM" create roles -r "$REALM" -s name=demo_user -s description='Limited public demo account'
 fi
 
-CLIENT_ID="$("$KCADM" get clients -r "$REALM" -q clientId=mini-rag-bff --fields id --format csv --noquotes 2>/dev/null || true)"
+CLIENT_ROWS="$("$KCADM" get clients -r "$REALM" --fields id,clientId --format csv --noquotes)"
+CLIENT_ID=
+while IFS=, read -r candidate_id candidate_client_id; do
+  if [ "$candidate_client_id" = mini-rag-bff ]; then
+    CLIENT_ID="$candidate_id"
+    break
+  fi
+done <<EOF
+$CLIENT_ROWS
+EOF
 if [ -z "$CLIENT_ID" ]; then
   "$KCADM" create clients -r "$REALM" \
     -s clientId=mini-rag-bff \
@@ -32,7 +41,16 @@ if [ -z "$CLIENT_ID" ]; then
     -s 'attributes."pkce.code.challenge.method"=S256' \
     -s "redirectUris=[\"https://${DEMO_APP_DOMAIN}/api/v1/auth/callback\"]" \
     -s "webOrigins=[\"https://${DEMO_APP_DOMAIN}\"]"
-  CLIENT_ID="$("$KCADM" get clients -r "$REALM" -q clientId=mini-rag-bff --fields id --format csv --noquotes)"
+  CLIENT_ROWS="$("$KCADM" get clients -r "$REALM" --fields id,clientId --format csv --noquotes)"
+  CLIENT_ID=
+  while IFS=, read -r candidate_id candidate_client_id; do
+    if [ "$candidate_client_id" = mini-rag-bff ]; then
+      CLIENT_ID="$candidate_id"
+      break
+    fi
+  done <<EOF
+$CLIENT_ROWS
+EOF
 fi
 
 if ! "$KCADM" get "clients/$CLIENT_ID/protocol-mappers/models" -r "$REALM" | grep -q '"claim.name" : "roles"'; then
@@ -49,11 +67,29 @@ if ! "$KCADM" get "clients/$CLIENT_ID/protocol-mappers/models" -r "$REALM" | gre
     -s 'config."userinfo.token.claim"=true'
 fi
 
-USER_ID="$("$KCADM" get users -r "$REALM" -q username="$DEMO_USER_USERNAME" --fields id --format csv --noquotes 2>/dev/null || true)"
+USER_ROWS="$("$KCADM" get users -r "$REALM" --fields id,username --format csv --noquotes)"
+USER_ID=
+while IFS=, read -r candidate_id candidate_username; do
+  if [ "$candidate_username" = "$DEMO_USER_USERNAME" ]; then
+    USER_ID="$candidate_id"
+    break
+  fi
+done <<EOF
+$USER_ROWS
+EOF
 if [ -z "$USER_ID" ]; then
   "$KCADM" create users -r "$REALM" \
     -s username="$DEMO_USER_USERNAME" -s enabled=true -s emailVerified=true
-  USER_ID="$("$KCADM" get users -r "$REALM" -q username="$DEMO_USER_USERNAME" --fields id --format csv --noquotes)"
+  USER_ROWS="$("$KCADM" get users -r "$REALM" --fields id,username --format csv --noquotes)"
+  USER_ID=
+  while IFS=, read -r candidate_id candidate_username; do
+    if [ "$candidate_username" = "$DEMO_USER_USERNAME" ]; then
+      USER_ID="$candidate_id"
+      break
+    fi
+  done <<EOF
+$USER_ROWS
+EOF
 fi
 
 "$KCADM" set-password -r "$REALM" --userid "$USER_ID" --new-password "$DEMO_USER_PASSWORD" >/dev/null
