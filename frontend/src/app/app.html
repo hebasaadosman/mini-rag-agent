@@ -1,11 +1,14 @@
 <main class="shell" dir="rtl">
   <header class="topbar">
-    <a class="brand" href="/" aria-label="Multi-Agent RAG home">Multi-Agent RAG</a>
-    <span class="environment">Public demo</span>
+    <a class="brand" href="/" aria-label="Multi-Agent RAG home">
+      <span class="brand-mark" aria-hidden="true">✦</span>
+      <span>Multi-Agent RAG</span>
+    </a>
+    <span class="environment"><i aria-hidden="true"></i>Public demo</span>
   </header>
 
   <section class="hero" aria-labelledby="demo-title">
-    <p class="eyebrow">Applied AI · RAG · Agentic Systems</p>
+    <div class="hero-kicker"><span class="pulse-dot" aria-hidden="true"></span>Applied AI · RAG · Agentic Systems</div>
     <h1 id="demo-title">جرّبي الـAI workspace في أقل من دقيقة.</h1>
     <p>جلسة محدودة وآمنة على workspace جاهز: إجابات grounded بالمصادر، routing بين agents، وHuman-in-the-Loop عند الحاجة إلى توضيح.</p>
     @if (!isDemo()) {
@@ -19,6 +22,9 @@
         <button type="button" class="secondary-action" (click)="signOut()" [disabled]="isLoading()">Sign out</button>
       </div>
     }
+    <div class="trust-row" aria-label="Demo capabilities">
+      <span>◈ إجابات موثقة</span><span>↗ Agent routing</span><span>⌁ جلسة آمنة</span>
+    </div>
   </section>
 
   <aside class="message" [class.success]="messageTone() === 'success'" [class.error]="messageTone() === 'error'" aria-live="polite">{{ message() }}</aside>
@@ -26,6 +32,7 @@
   @if (isDemo() && currentProject(); as project) {
     <section class="demo-grid" aria-label="Demo workspace">
       <article class="card workspace-card">
+        <div class="workspace-icon" aria-hidden="true">⌘</div>
         <p class="eyebrow">Preloaded workspace</p>
         <h2>المستندات والـindex جاهزان</h2>
         <p>جلسة مشاهدة فقط. لا upload، ولا projects أو إعدادات يمكن تعديلها.</p>
@@ -45,8 +52,10 @@
           </div>
         }
         <label for="question">سؤالك</label>
-        <textarea id="question" rows="4" [value]="chatMessage()" (input)="updateChatMessage($any($event.target).value)" placeholder="اسألي عن محتوى الـDemo document" [disabled]="isLoading() || pendingInteraction()"></textarea>
-        <button type="button" (click)="sendChat()" [disabled]="isLoading() || !chatMessage().trim() || pendingInteraction()">{{ isLoading() ? 'جارٍ التفكير…' : 'Ask agents' }}</button>
+        <div class="composer">
+          <textarea id="question" rows="4" [value]="chatMessage()" (input)="updateChatMessage($any($event.target).value)" placeholder="اسألي عن محتوى الـDemo document" [disabled]="isLoading() || pendingInteraction()"></textarea>
+          <button type="button" class="send-button" (click)="sendChat()" [disabled]="isLoading() || !chatMessage().trim() || pendingInteraction()"><span>{{ isLoading() ? 'جارٍ التفكير…' : 'Ask agents' }}</span><b aria-hidden="true">↗</b></button>
+        </div>
 
         @if (pendingInteraction(); as interaction) {
           <section class="interaction" aria-live="polite">
@@ -83,9 +92,9 @@
     </section>
   } @else {
     <section class="preview-grid" aria-label="Demo capabilities">
-      <article class="card"><span>01</span><h2>Grounded RAG</h2><p>الإجابة مرتبطة بمقاطع مسترجعة ويمكن مراجعة مصادرها.</p></article>
-      <article class="card"><span>02</span><h2>Agent routing</h2><p>يوجه السؤال إلى المسار المتخصص بدل إجابة عامة واحدة.</p></article>
-      <article class="card"><span>03</span><h2>HITL resume</h2><p>سيناريو توضيح حقيقي ثم استكمال نفس thread دون البدء من الصفر.</p></article>
+      <article class="card capability-card"><div class="capability-top"><span class="capability-icon">◈</span><span>01</span></div><h2>Grounded RAG</h2><p>الإجابة مرتبطة بمقاطع مسترجعة ويمكن مراجعة مصادرها.</p><em>Sources attached</em></article>
+      <article class="card capability-card"><div class="capability-top"><span class="capability-icon">↗</span><span>02</span></div><h2>Agent routing</h2><p>يوجه السؤال إلى المسار المتخصص بدل إجابة عامة واحدة.</p><em>Specialist first</em></article>
+      <article class="card capability-card"><div class="capability-top"><span class="capability-icon">⌁</span><span>03</span></div><h2>HITL resume</h2><p>سيناريو توضيح حقيقي ثم استكمال نفس thread دون البدء من الصفر.</p><em>Human control</em></article>
     </section>
   }
 </main>
