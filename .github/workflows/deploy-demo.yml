@@ -100,6 +100,20 @@ jobs:
           for name in "${required[@]}"; do
             [[ -n "${!name:-}" ]] || { echo "Required demo secret is missing: $name" >&2; exit 1; }
           done
+          required_app_keys=(
+            AUTH_OIDC_ISSUER
+            AUTH_OIDC_CLIENT_ID
+            AUTH_OIDC_REDIRECT_URI
+            AUTH_OIDC_AUTHORIZATION_ENDPOINT
+            AUTH_OIDC_TOKEN_ENDPOINT
+            AUTH_OIDC_JWKS_URL
+          )
+          for key in "${required_app_keys[@]}"; do
+            grep -Eq "^${key}=.+$" <<< "$DEMO_ENV_APP" || {
+              echo "DEMO_ENV_APP is missing a required non-empty setting: $key" >&2
+              exit 1
+            }
+          done
 
       - name: Resolve immutable image names
         id: images
@@ -308,7 +322,7 @@ jobs:
           diagnose_failure() {
             echo "Demo diagnostics before rollback:" >&2
             compose ps --all || true
-            for service in migration keycloak-demo-provisioner demo-provisioner nginx; do
+            for service in migration keycloak-demo-provisioner demo-provisioner fastapi nginx; do
               echo "--- $service logs (last 150 lines) ---" >&2
               compose logs --no-color --tail=150 "$service" || true
             done
@@ -332,7 +346,8 @@ jobs:
           else
             tls_smoke() {
               curl --fail --silent --show-error --connect-timeout 2 --max-time 5 --resolve "$app_domain:443:127.0.0.1" "https://$app_domain/" >/dev/null &&
-                curl --fail --silent --show-error --connect-timeout 2 --max-time 5 --resolve "$idp_domain:443:127.0.0.1" "https://$idp_domain/realms/mini-rag/.well-known/openid-configuration" >/dev/null
+                curl --fail --silent --show-error --connect-timeout 2 --max-time 5 --resolve "$idp_domain:443:127.0.0.1" "https://$idp_domain/realms/mini-rag/.well-known/openid-configuration" >/dev/null &&
+                test "$(curl --silent --output /dev/null --write-out '%{http_code}' --connect-timeout 2 --max-time 5 --resolve "$app_domain:443:127.0.0.1" "https://$app_domain/api/v1/auth/me")" = "401"
             }
             attempt=1
             while [ "$attempt" -le 30 ]; do
