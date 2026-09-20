@@ -349,16 +349,19 @@ jobs:
                 curl --fail --silent --show-error --connect-timeout 2 --max-time 5 --resolve "$idp_domain:443:127.0.0.1" "https://$idp_domain/realms/mini-rag/.well-known/openid-configuration" >/dev/null &&
                 test "$(curl --silent --output /dev/null --write-out '%{http_code}' --connect-timeout 2 --max-time 5 --resolve "$app_domain:443:127.0.0.1" "https://$app_domain/api/v1/auth/me")" = "401"
             }
+            # FastAPI starts only after migration and demo-workspace provisioning.
+            # On a cold host that can take several minutes, so allow a bounded
+            # six-minute readiness window before treating the release as failed.
             attempt=1
-            while [ "$attempt" -le 30 ]; do
+            while [ "$attempt" -le 180 ]; do
               if tls_smoke; then
                 break
               fi
-              if [ "$attempt" -eq 30 ]; then
-                echo "TLS smoke checks did not become ready after 30 attempts." >&2
+              if [ "$attempt" -eq 180 ]; then
+                echo "TLS smoke checks did not become ready after 180 attempts." >&2
                 exit 1
               fi
-              echo "TLS endpoints are not ready yet; retrying in 2 seconds (attempt $attempt/30)." >&2
+              echo "TLS endpoints are not ready yet; retrying in 2 seconds (attempt $attempt/180)." >&2
               sleep 2
               attempt=$((attempt + 1))
             done
