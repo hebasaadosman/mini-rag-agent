@@ -14,13 +14,12 @@
       </p>
       <h1 id="demo-title">إجابات أوضح.<br /><span>قرارات أهدى.</span></h1>
       <p class="hero-description">
-        جرّبي مساحة عمل مدعومة بالمصادر: يفهم النظام سؤالك، يوجّهه للمسار المناسب، ويطلب توضيحك
-        عندما تكون المعلومة غير كافية.
+        مساحة عمل مدعومة بالمصادر لفهم السؤال، توجيهه للمسار المناسب، وطلب توضيح عند الحاجة.
       </p>
       @if (!isDemo()) {
         <div class="hero-actions">
           <button type="button" (click)="exploreDemo()" [disabled]="isLoading()">
-            {{ isLoading() ? 'جارٍ تجهيز الجلسة…' : 'ابدئي التجربة' }}
+            {{ isLoading() ? 'جارٍ تجهيز الجلسة…' : 'بدء التجربة' }}
             <span aria-hidden="true">←</span>
           </button>
           <button
@@ -58,15 +57,19 @@
       <ol>
         <li>
           <span>01</span>
-          <div><strong>افهمي السياق</strong><small>سؤال واحد، دون خطوات معقدة.</small></div>
+          <div><strong>فهم السياق</strong><small>سؤال واحد، دون خطوات معقدة.</small></div>
         </li>
         <li>
           <span>02</span>
-          <div><strong>راجعي الإجابة</strong><small>النتيجة مرتبطة بالمصادر المسترجعة.</small></div>
+          <div>
+            <strong>مراجعة الإجابة</strong><small>النتيجة مرتبطة بالمصادر المسترجعة.</small>
+          </div>
         </li>
         <li>
           <span>03</span>
-          <div><strong>أكملي بثقة</strong><small>يتوقف النظام عندما يحتاج قرارك.</small></div>
+          <div>
+            <strong>الاستمرار بثقة</strong><small>يتوقف النظام عندما يحتاج قرارًا منك.</small>
+          </div>
         </li>
       </ol>
     </aside>
@@ -97,7 +100,7 @@
       <article class="card chat-card">
         <div class="card-heading">
           <div>
-            <p class="eyebrow">اسألي النظام</p>
+            <p class="eyebrow">طرح سؤال للنظام</p>
             <h2>محادثة مدعومة بالمصادر</h2>
           </div>
           @if (threadId()) {
@@ -126,7 +129,7 @@
             rows="4"
             [value]="chatMessage()"
             (input)="updateChatMessage($any($event.target).value)"
-            placeholder="اسألي عن محتوى المستند التجريبي"
+            placeholder="سؤال عن محتوى المستند التجريبي"
             [disabled]="isLoading() || pendingInteraction()"
           ></textarea
           ><button
@@ -157,14 +160,14 @@
                 }
               </div>
             } @else {
-              <label for="resume-response">توضيحك</label
+              <label for="resume-response">التوضيح المطلوب</label
               ><textarea
                 id="resume-response"
                 dir="auto"
                 rows="3"
                 [value]="resumeResponse()"
                 (input)="updateResumeResponse($any($event.target).value)"
-                placeholder="اكتبي التوضيح المطلوب"
+                placeholder="التوضيح المطلوب"
                 [disabled]="isLoading()"
               ></textarea
               ><button

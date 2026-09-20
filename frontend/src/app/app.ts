@@ -58,7 +58,7 @@ export class App implements OnInit {
   protected readonly resumeResponse = signal('');
   protected readonly threadId = signal<string | null>(null);
   protected readonly isLoading = signal(false);
-  protected readonly message = signal('ابدئي جلسة Demo لتجربة الـworkspace الجاهز.');
+  protected readonly message = signal('يمكن بدء جلسة Demo لتجربة الـworkspace الجاهز.');
   protected readonly messageTone = signal<'neutral' | 'success' | 'error'>('neutral');
   protected readonly isDemo = computed(() => this.principal()?.kind === 'demo');
 
@@ -74,40 +74,57 @@ export class App implements OnInit {
     this.isLoading.set(true);
     this.clearDemoState();
     try {
-      const demo = await firstValueFrom(this.http.post<DemoSessionResponse>(apiUrl('/api/v1/auth/demo'), null));
+      const demo = await firstValueFrom(
+        this.http.post<DemoSessionResponse>(apiUrl('/api/v1/auth/demo'), null),
+      );
       this.principal.set(demo);
       this.suggestedQuestions.set(demo.suggested_questions);
       this.activateDemoProject(demo.demo_project_id);
-      this.setMessage('الـDemo workspace جاهز. اختاري سؤالًا مقترحًا أو اكتبي سؤالك.', 'success');
+      this.setMessage(
+        'الـDemo workspace جاهز. يمكن اختيار سؤال مقترح أو إدخال سؤال جديد.',
+        'success',
+      );
     } catch {
-      this.setMessage('تعذر بدء جلسة الـDemo. حاولي مرة أخرى.', 'error');
+      this.setMessage('تعذر بدء جلسة الـDemo. يرجى المحاولة مرة أخرى.', 'error');
     } finally {
       this.isLoading.set(false);
     }
   }
 
-  protected chooseSuggestedQuestion(question: string): void { this.chatMessage.set(question); }
-  protected updateChatMessage(value: string): void { this.chatMessage.set(value); }
-  protected updateResumeResponse(value: string): void { this.resumeResponse.set(value); }
+  protected chooseSuggestedQuestion(question: string): void {
+    this.chatMessage.set(question);
+  }
+  protected updateChatMessage(value: string): void {
+    this.chatMessage.set(value);
+  }
+  protected updateResumeResponse(value: string): void {
+    this.resumeResponse.set(value);
+  }
 
   protected async sendChat(): Promise<void> {
     const project = this.currentProject();
     const message = this.chatMessage().trim();
     if (!this.isDemo() || !project || !message || this.pendingInteraction()) {
-      this.setMessage('ابدئي Demo session واكتبي سؤالًا أولًا.', 'error');
+      this.setMessage('يلزم بدء Demo session وإدخال سؤال أولًا.', 'error');
       return;
     }
-    const threadId = this.threadId() ?? this.restoreThreadId(project.project_id) ?? crypto.randomUUID();
+    const threadId =
+      this.threadId() ?? this.restoreThreadId(project.project_id) ?? crypto.randomUUID();
     this.threadId.set(threadId);
     sessionStorage.setItem(this.threadStorageKey(project.project_id), threadId);
     this.isLoading.set(true);
     this.chatAnswer.set(null);
     this.chatSources.set([]);
     try {
-      const response = await firstValueFrom(this.http.post<AgentResponse>(apiUrl(`/api/v1/agents/${project.project_id}/chat`), { message, thread_id: threadId }));
+      const response = await firstValueFrom(
+        this.http.post<AgentResponse>(apiUrl(`/api/v1/agents/${project.project_id}/chat`), {
+          message,
+          thread_id: threadId,
+        }),
+      );
       this.applyAgentResponse(response);
     } catch {
-      this.setMessage('تعذر تنفيذ الـchat. حاولي مرة أخرى.', 'error');
+      this.setMessage('تعذر تنفيذ الـchat. يرجى المحاولة مرة أخرى.', 'error');
     } finally {
       this.isLoading.set(false);
     }
@@ -118,16 +135,21 @@ export class App implements OnInit {
     const threadId = this.threadId();
     const response = (option ?? this.resumeResponse()).trim();
     if (!this.isDemo() || !project || !threadId || !response) {
-      this.setMessage('اكتبي ردًا أو اختاري أحد الخيارات للمتابعة.', 'error');
+      this.setMessage('يلزم إدخال رد أو اختيار أحد الخيارات للمتابعة.', 'error');
       return;
     }
     this.isLoading.set(true);
     try {
-      const result = await firstValueFrom(this.http.post<AgentResponse>(apiUrl(`/api/v1/agents/${project.project_id}/chat/resume`), { response, thread_id: threadId }));
+      const result = await firstValueFrom(
+        this.http.post<AgentResponse>(apiUrl(`/api/v1/agents/${project.project_id}/chat/resume`), {
+          response,
+          thread_id: threadId,
+        }),
+      );
       this.resumeResponse.set('');
       this.applyAgentResponse(result);
     } catch {
-      this.setMessage('تعذر استكمال الـtask. حاولي مرة أخرى.', 'error');
+      this.setMessage('تعذر استكمال الـtask. يرجى المحاولة مرة أخرى.', 'error');
     } finally {
       this.isLoading.set(false);
     }
@@ -161,9 +183,9 @@ export class App implements OnInit {
       this.principal.set(null);
       this.clearDemoState();
       if (error instanceof HttpErrorResponse && error.status === 401) {
-        this.setMessage('ابدئي جلسة Demo لتجربة الـworkspace الجاهز.', 'neutral');
+        this.setMessage('يمكن بدء جلسة Demo لتجربة الـworkspace الجاهز.', 'neutral');
       } else {
-        this.setMessage('تعذر الاتصال بخدمة الجلسات. حاولي مرة أخرى.', 'error');
+        this.setMessage('تعذر الاتصال بخدمة الجلسات. يرجى المحاولة مرة أخرى.', 'error');
       }
     } finally {
       this.isLoading.set(false);
@@ -171,7 +193,11 @@ export class App implements OnInit {
   }
 
   private applyAgentResponse(response: AgentResponse): void {
-    const interactionStatuses = new Set(['clarification_required', 'switch_confirmation_required', 'approval_required']);
+    const interactionStatuses = new Set([
+      'clarification_required',
+      'switch_confirmation_required',
+      'approval_required',
+    ]);
     if (interactionStatuses.has(response.status)) {
       this.chatAnswer.set(null);
       this.chatSources.set([]);
@@ -186,7 +212,10 @@ export class App implements OnInit {
     this.pendingInteraction.set(null);
     this.chatAnswer.set(response.answer ?? response.error ?? 'لم يرجع الـagent إجابة قابلة للعرض.');
     this.chatSources.set(response.sources ?? []);
-    this.setMessage(response.error ? 'تعذر إكمال الطلب.' : 'تمت الإجابة مع المصادر.', response.error ? 'error' : 'success');
+    this.setMessage(
+      response.error ? 'تعذر إكمال الطلب.' : 'تمت الإجابة مع المصادر.',
+      response.error ? 'error' : 'success',
+    );
   }
 
   private activateDemoProject(projectId: number): void {
@@ -222,6 +251,11 @@ export class App implements OnInit {
     return threadId && /^[0-9a-f-]{36}$/i.test(threadId) ? threadId : null;
   }
 
-  private threadStorageKey(projectId: number): string { return `${DEMO_THREAD_STORAGE_PREFIX}${projectId}`; }
-  private setMessage(message: string, tone: 'neutral' | 'success' | 'error'): void { this.message.set(message); this.messageTone.set(tone); }
+  private threadStorageKey(projectId: number): string {
+    return `${DEMO_THREAD_STORAGE_PREFIX}${projectId}`;
+  }
+  private setMessage(message: string, tone: 'neutral' | 'success' | 'error'): void {
+    this.message.set(message);
+    this.messageTone.set(tone);
+  }
 }
