@@ -177,6 +177,12 @@ class SupervisorAgent:
         original_request = str(state.get("user_message") or "").strip()
         if not original_request:
             return self._failure("The original routing request is missing.")
+        pending_interrupt = state.get("pending_interrupt")
+        clarification_question = (
+            str(pending_interrupt.get("question") or "").strip()
+            if isinstance(pending_interrupt, dict)
+            else ""
+        )
 
         resumed_state = {
             **state,
@@ -184,8 +190,13 @@ class SupervisorAgent:
             "handoff_reason": None,
             "visited_agents": [],
             "user_message": (
+                "Route the original request using the user's clarification. "
+                "The clarification is an answer to the pending question, not "
+                "a separate request. Do not ask another clarification when it "
+                "resolves the routing choice.\n\n"
                 f"Original request:\n{original_request}\n\n"
-                f"Clarification response:\n{response}"
+                f"Pending clarification:\n{clarification_question}\n\n"
+                f"User's clarification:\n{response}"
             ),
         }
         update = await self(resumed_state)

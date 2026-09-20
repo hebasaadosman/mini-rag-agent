@@ -309,6 +309,10 @@ class SupervisorAgentTests(unittest.IsolatedAsyncioTestCase):
             "Yes, send an email.",
             provider.calls[0]["prompt"],
         )
+        self.assertIn(
+            "Pending clarification:\nDo you want to send an email?",
+            provider.calls[0]["prompt"],
+        )
         self.assertIsNone(update["resume_target"])
         self.assertIsNone(update["pending_interrupt"])
         self.assertEqual(update["visited_agents"], [])
