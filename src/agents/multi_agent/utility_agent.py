@@ -102,13 +102,27 @@ class UtilityAgent:
         except SpecialistResumeError as exc:
             return self._failure(str(exc))
 
-        return await self._run(state, user_message=response)
+        pending_interrupt = state.get("pending_interrupt")
+        pending_question = (
+            str(pending_interrupt.get("question") or "").strip()
+            if isinstance(pending_interrupt, dict)
+            else ""
+        )
+        return await self._run(
+            state,
+            user_message=response,
+            provider_user_message=self._build_resume_prompt(
+                question=pending_question,
+                response=response,
+            ),
+        )
 
     async def _run(
         self,
         state: MultiAgentState,
         *,
         user_message: str,
+        provider_user_message: str | None = None,
     ) -> dict[str, Any]:
 
         canonical_history = self._normalize_history(
@@ -122,7 +136,7 @@ class UtilityAgent:
         try:
             provider_messages = self._build_provider_messages(
                 canonical_history,
-                user_message,
+                provider_user_message or user_message,
             )
         except Exception:
             return self._failure(
@@ -193,6 +207,14 @@ class UtilityAgent:
                     model_response.get("content")
                 )
             except SpecialistResponseParseError:
+                if iteration < self._max_iterations:
+                    provider_messages.append(
+                        self._llm_provider.construct_prompt(
+                            prompt=self._repair_prompt(user_message),
+                            role=self._llm_provider.enums.USER.value,
+                        )
+                    )
+                    continue
                 return self._failure(
                     "The utility agent returned an invalid response."
                 )
@@ -235,6 +257,28 @@ class UtilityAgent:
 
         return self._failure(
             "The utility agent exceeded the iteration limit."
+        )
+
+    @staticmethod
+    def _build_resume_prompt(*, question: str, response: str) -> str:
+        question_context = question or "the pending clarification"
+        return (
+            "The user is answering a pending clarification for the prior "
+            "request. Treat the text below as additional context for that "
+            "request, not as a new unrelated request. Do not repeat the same "
+            "clarification unless the response genuinely does not answer it.\n\n"
+            f"Pending clarification:\n{question_context}\n\n"
+            f"User's clarification:\n{response}"
+        )
+
+    @staticmethod
+    def _repair_prompt(user_message: str) -> str:
+        return (
+            "Your previous response did not match the required JSON contract. "
+            "Re-evaluate the original user request and return exactly one valid "
+            "JSON object using an answer, clarification, or handoff shape from "
+            "the system prompt. Do not use Markdown or add commentary.\n\n"
+            f"Original user request:\n{user_message}"
         )
 
     async def _execute_tool_call(

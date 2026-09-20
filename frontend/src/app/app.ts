@@ -210,12 +210,15 @@ export class App implements OnInit {
       return;
     }
     this.pendingInteraction.set(null);
-    this.chatAnswer.set(response.answer ?? response.error ?? 'لم يرجع الـagent إجابة قابلة للعرض.');
+    if (response.error) {
+      this.chatAnswer.set('تعذر إكمال هذا الطلب الآن. يرجى إعادة المحاولة لاحقًا.');
+      this.chatSources.set([]);
+      this.setMessage('تعذر إكمال الطلب.', 'error');
+      return;
+    }
+    this.chatAnswer.set(response.answer ?? 'لم يرجع الـagent إجابة قابلة للعرض.');
     this.chatSources.set(response.sources ?? []);
-    this.setMessage(
-      response.error ? 'تعذر إكمال الطلب.' : 'تمت الإجابة مع المصادر.',
-      response.error ? 'error' : 'success',
-    );
+    this.setMessage('تمت الإجابة مع المصادر.', 'success');
   }
 
   private activateDemoProject(projectId: number): void {

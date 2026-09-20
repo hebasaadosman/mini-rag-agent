@@ -158,6 +158,14 @@ class UtilityAgentTests(unittest.IsolatedAsyncioTestCase):
             [message["role"] for message in second_messages],
             ["SYSTEM", "USER", "CHATBOT", "USER"],
         )
+        self.assertIn(
+            "Pending clarification:\nWhich city?",
+            second_messages[-1]["content"],
+        )
+        self.assertIn(
+            "User's clarification:\nRiyadh",
+            second_messages[-1]["content"],
+        )
 
     async def test_resume_without_utility_interrupt_is_rejected(self):
         provider = _FakeProvider([])
@@ -382,6 +390,7 @@ class UtilityAgentTests(unittest.IsolatedAsyncioTestCase):
         agent = UtilityAgent(
             llm_provider=provider,
             tool_registry=ToolRegistry(),
+            max_iterations=1,
         )
 
         update = await agent(
@@ -393,6 +402,34 @@ class UtilityAgentTests(unittest.IsolatedAsyncioTestCase):
             update["error"],
             "The utility agent returned an invalid response.",
         )
+
+    async def test_invalid_final_response_is_repaired_once(self):
+        provider = _FakeProvider(
+            [
+                {"content": "plain text", "tool_calls": []},
+                {
+                    "content": json.dumps(
+                        {"action": "answer", "answer": "It is clear in Riyadh."}
+                    ),
+                    "tool_calls": [],
+                },
+            ]
+        )
+        agent = UtilityAgent(
+            llm_provider=provider,
+            tool_registry=ToolRegistry(),
+        )
+
+        update = await agent(
+            build_initial_multi_agent_state("Weather in Riyadh?")
+        )
+
+        self.assertEqual(update["task_status"], TaskStatus.COMPLETED)
+        self.assertEqual(
+            update["final_response"]["answer"],
+            "It is clear in Riyadh.",
+        )
+        self.assertEqual(len(provider.calls), 2)
 
     async def test_non_object_provider_response_is_rejected(self):
         agent = UtilityAgent(
