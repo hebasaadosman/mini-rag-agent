@@ -63,18 +63,33 @@ class GeneralAgent:
         except SpecialistResumeError as exc:
             return self._failure(str(exc))
 
-        return await self._run(state, user_message=response)
+        pending_interrupt = state.get("pending_interrupt")
+        pending_question = (
+            str(pending_interrupt.get("question") or "").strip()
+            if isinstance(pending_interrupt, dict)
+            else ""
+        )
+        return await self._run(
+            state,
+            user_message=response,
+            context_message=self._build_resume_context(
+                question=pending_question,
+                response=response,
+            ),
+        )
 
     async def _run(
         self,
         state: MultiAgentState,
         *,
         user_message: str,
+        context_message: str | None = None,
     ) -> dict[str, Any]:
 
         canonical_history = self._normalize_history(
             state.get("messages") or []
         )
+        agent_message = context_message or user_message
 
         try:
             chat_history = self._build_provider_history(
@@ -82,7 +97,7 @@ class GeneralAgent:
             )
             content = await asyncio.to_thread(
                 self._llm_provider.generate_text,
-                user_message,
+                agent_message,
                 chat_history=chat_history,
                 max_tokens=self._max_tokens,
                 temperature=self._temperature,
@@ -94,7 +109,7 @@ class GeneralAgent:
             response = SpecialistResponseParser.parse(content)
         except SpecialistResponseParseError:
             response = await self._repair_response(
-                user_message=user_message,
+                user_message=agent_message,
                 chat_history=chat_history,
             )
             if response is None:
@@ -103,7 +118,7 @@ class GeneralAgent:
                 )
 
         response = await self._review_decision(
-            user_message=user_message,
+            user_message=agent_message,
             canonical_history=canonical_history,
         )
         if response is None:
@@ -170,6 +185,18 @@ class GeneralAgent:
             },
             "error": None,
         }
+
+    @staticmethod
+    def _build_resume_context(*, question: str, response: str) -> str:
+        question_context = question or "the pending clarification"
+        return (
+            "The user is answering a pending clarification for the prior "
+            "request. Treat the reply as additional context, not as a new "
+            "unrelated request. Do not repeat the same clarification when "
+            "the reply resolves it.\n\n"
+            f"Pending clarification:\n{question_context}\n\n"
+            f"User's clarification:\n{response}"
+        )
 
     async def _repair_response(
         self,

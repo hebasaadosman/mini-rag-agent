@@ -159,6 +159,9 @@
                   </button>
                 }
               </div>
+              @if (isLoading()) {
+                <p class="interaction-progress" aria-live="assertive">جارٍ متابعة الطلب…</p>
+              }
             } @else {
               <label for="resume-response">التوضيح المطلوب</label
               ><textarea

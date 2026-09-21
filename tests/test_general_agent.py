@@ -151,6 +151,14 @@ class GeneralAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state["task_status"], TaskStatus.COMPLETED)
         self.assertIsNone(state["resume_target"])
         self.assertEqual(len(provider.calls), 4)
+        self.assertIn(
+            "Pending clarification:\nWhich concept should I explain?",
+            provider.calls[2]["prompt"],
+        )
+        self.assertIn(
+            "User's clarification:\nRAG",
+            provider.calls[3]["prompt"],
+        )
 
     async def test_completes_a_general_conversation_turn(self):
         provider = _FakeProvider(
