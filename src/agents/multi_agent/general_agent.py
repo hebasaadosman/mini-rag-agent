@@ -49,6 +49,14 @@ class GeneralAgent:
         if not user_message:
             return self._failure("user_message cannot be blank.")
 
+        simple_answer = self._simple_conversation_answer(user_message)
+        if simple_answer is not None:
+            return self._simple_answer_update(
+                state,
+                user_message=user_message,
+                answer=simple_answer,
+            )
+
         return await self._run(state, user_message=user_message)
 
     async def resume(
@@ -197,6 +205,62 @@ class GeneralAgent:
             f"Pending clarification:\n{question_context}\n\n"
             f"User's clarification:\n{response}"
         )
+
+    @staticmethod
+    def _simple_conversation_answer(user_message: str) -> str | None:
+        normalized = user_message.casefold().strip()
+        if any(
+            marker in normalized
+            for marker in ("السلام عليكم", "سلام عليكم")
+        ):
+            return "وعليكم السلام ورحمة الله وبركاته. كيف يمكنني مساعدتك؟"
+        if "اتكلم العربي" in normalized or "أتكلم العربي" in normalized:
+            return "أهلًا، سأتحدث بالعربية. كيف يمكنني مساعدتك؟"
+        if normalized in {"انا محبط", "أنا محبط", "i am frustrated"}:
+            return (
+                "أفهم الإحباط. يمكننا أخذ الأمر خطوة خطوة—"
+                "اكتب ما تريد إنجازه الآن."
+            )
+        return None
+
+    def _simple_answer_update(
+        self,
+        state: MultiAgentState,
+        *,
+        user_message: str,
+        answer: str,
+    ) -> dict[str, Any]:
+        canonical_history = self._normalize_history(
+            state.get("messages") or []
+        )
+        retained_limit = self._max_memory_messages - 2
+        retained_history = (
+            canonical_history[-retained_limit:]
+            if retained_limit
+            else []
+        )
+        while retained_history and retained_history[0]["role"] != "user":
+            retained_history.pop(0)
+        return {
+            "messages": [
+                *retained_history,
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": answer},
+            ],
+            "active_agent": AgentName.GENERAL.value,
+            "resume_target": None,
+            "task_status": TaskStatus.COMPLETED.value,
+            "pending_interrupt": None,
+            "pending_user_message": None,
+            "handoff_reason": None,
+            "final_response": {
+                "success": True,
+                "status": TaskStatus.COMPLETED.value,
+                "agent": AgentName.GENERAL.value,
+                "answer": answer,
+            },
+            "error": None,
+        }
 
     async def _repair_response(
         self,

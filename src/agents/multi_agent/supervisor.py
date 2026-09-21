@@ -39,6 +39,19 @@ class SupervisorAgent:
         if not user_message:
             return self._failure("user_message cannot be blank.")
 
+        simple_conversation = self._simple_conversation_decision(
+            user_message
+        )
+        if simple_conversation is not None:
+            return {
+                "supervisor_decision": simple_conversation.model_dump(
+                    mode="json"
+                ),
+                "active_agent": AgentName.SUPERVISOR.value,
+                "task_status": TaskStatus.RUNNING.value,
+                "error": None,
+            }
+
         compound_clarification = self._compound_request_clarification(
             user_message
         )
@@ -139,6 +152,46 @@ class SupervisorAgent:
             )
         except Exception:
             return None
+
+    @staticmethod
+    def _simple_conversation_decision(
+        user_message: str,
+    ) -> SupervisorDecision | None:
+        normalized = user_message.casefold().strip()
+        greeting_markers = (
+            "السلام عليكم",
+            "سلام عليكم",
+            "مرحبا",
+            "أهلا",
+            "اهلا",
+            "صباح الخير",
+            "مساء الخير",
+            "hello",
+            "hi",
+            "good morning",
+            "good evening",
+        )
+        is_greeting = any(
+            normalized == marker or normalized.startswith(f"{marker} ")
+            for marker in greeting_markers
+        )
+        is_language_preference = "اتكلم العربي" in normalized
+        is_short_emotional_message = normalized in {
+            "انا محبط",
+            "أنا محبط",
+            "i am frustrated",
+        }
+        if not (
+            is_greeting
+            or is_language_preference
+            or is_short_emotional_message
+        ):
+            return None
+        return SupervisorDecision(
+            route=SupervisorRoute.GENERAL,
+            reason=SupervisorReason.GENERAL_CONVERSATION,
+            confidence=1.0,
+        )
 
     @staticmethod
     def _compound_request_clarification(

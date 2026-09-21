@@ -121,6 +121,16 @@ class _SequencedProvider(_FakeProvider):
 
 
 class GeneralAgentTests(unittest.IsolatedAsyncioTestCase):
+    async def test_answers_arabic_greeting_without_calling_the_llm(self):
+        provider = _FakeProvider()
+        agent = GeneralAgent(llm_provider=provider)
+
+        update = await agent(build_initial_multi_agent_state("السلام عليكم"))
+
+        self.assertEqual(update["task_status"], TaskStatus.COMPLETED)
+        self.assertIn("وعليكم السلام", update["final_response"]["answer"])
+        self.assertEqual(provider.calls, [])
+
     async def test_general_clarification_can_resume_directly(self):
         provider = _FakeProvider(
             json.dumps(

@@ -60,6 +60,15 @@ class _SequencedProvider(_FakeProvider):
 
 
 class SupervisorAgentTests(unittest.IsolatedAsyncioTestCase):
+    async def test_routes_arabic_greeting_to_general_without_llm(self):
+        provider = _FakeProvider("")
+        agent = SupervisorAgent(llm_provider=provider)
+
+        update = await agent(build_initial_multi_agent_state("السلام عليكم"))
+
+        self.assertEqual(update["supervisor_decision"]["route"], "general")
+        self.assertEqual(provider.calls, [])
+
     async def test_compound_weather_and_policy_request_uses_two_choices(self):
         provider = _FakeProvider("")
         agent = SupervisorAgent(llm_provider=provider)
