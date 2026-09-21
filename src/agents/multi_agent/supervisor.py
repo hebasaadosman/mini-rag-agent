@@ -244,6 +244,29 @@ class SupervisorAgent:
         return None
 
     @staticmethod
+    def _resolved_compound_request(
+        *,
+        original_request: str,
+        route: SupervisorRoute,
+    ) -> str:
+        is_arabic = any(
+            "\u0600" <= char <= "\u06ff" for char in original_request
+        )
+        if route is SupervisorRoute.KNOWLEDGE:
+            return (
+                "ما الذي تقوله سياسة العمل عن بُعد؟"
+                if is_arabic
+                else "What does the remote-work policy say?"
+            )
+        if route is SupervisorRoute.UTILITY:
+            return (
+                "ما الطقس الحالي في الرياض؟"
+                if is_arabic
+                else "What is the current weather in Riyadh?"
+            )
+        return original_request
+
+    @staticmethod
     def _clarification_fallback(
         user_message: str,
         *,
@@ -298,6 +321,10 @@ class SupervisorAgent:
             response=response,
         )
         if compound_selection is not None:
+            resolved_request = self._resolved_compound_request(
+                original_request=original_request,
+                route=compound_selection.route,
+            )
             return {
                 "supervisor_decision": compound_selection.model_dump(
                     mode="json"
@@ -310,6 +337,7 @@ class SupervisorAgent:
                 "handoff_count": 0,
                 "handoff_reason": None,
                 "visited_agents": [],
+                "user_message": resolved_request,
                 "error": None,
             }
         pending_interrupt = state.get("pending_interrupt")

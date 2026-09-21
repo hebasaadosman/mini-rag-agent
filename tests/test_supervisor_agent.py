@@ -101,6 +101,10 @@ class SupervisorAgentTests(unittest.IsolatedAsyncioTestCase):
         update = await agent.resume(state)
 
         self.assertEqual(update["supervisor_decision"]["route"], "knowledge")
+        self.assertEqual(
+            update["user_message"],
+            "What does the remote-work policy say?",
+        )
         self.assertEqual(provider.calls, [])
 
     def test_prompt_routes_impossible_relationships_to_general(self):
