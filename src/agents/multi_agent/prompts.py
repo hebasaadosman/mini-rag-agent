@@ -67,6 +67,7 @@ For clarification, include the question:
   "route": "clarification",
   "reason": "ambiguous_request",
   "confidence": 0.0,
-  "clarification_question": "one concise question"
+  "clarification_question": "one concise question",
+  "clarification_options": ["short option 1", "short option 2"]
 }}
 """.strip()

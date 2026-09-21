@@ -18,6 +18,7 @@ class SupervisorClarificationNodeTests(unittest.IsolatedAsyncioTestCase):
                 "reason": "ambiguous_request",
                 "confidence": 0.4,
                 "clarification_question": "Which service do you need?",
+                "clarification_options": ["Knowledge", "Weather"],
             }
         }
 
@@ -40,6 +41,10 @@ class SupervisorClarificationNodeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             update["final_response"]["interrupt_id"],
             "supervisor-interrupt-1",
+        )
+        self.assertEqual(
+            update["pending_interrupt"]["options"],
+            ["Knowledge", "Weather"],
         )
         self.assertEqual(update["handoff_count"], 0)
         self.assertIsNone(update["handoff_reason"])

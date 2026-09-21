@@ -60,6 +60,49 @@ class _SequencedProvider(_FakeProvider):
 
 
 class SupervisorAgentTests(unittest.IsolatedAsyncioTestCase):
+    async def test_compound_weather_and_policy_request_uses_two_choices(self):
+        provider = _FakeProvider("")
+        agent = SupervisorAgent(llm_provider=provider)
+
+        update = await agent(
+            build_initial_multi_agent_state(
+                "Can you help with the remote-work policy or check "
+                "today's weather in Riyadh?"
+            )
+        )
+
+        self.assertEqual(update["supervisor_decision"]["route"], "clarification")
+        self.assertEqual(
+            update["supervisor_decision"]["clarification_options"],
+            ["Remote-work policy", "Current weather in Riyadh"],
+        )
+        self.assertEqual(provider.calls, [])
+
+    async def test_compound_policy_selection_routes_to_knowledge(self):
+        provider = _FakeProvider("")
+        agent = SupervisorAgent(llm_provider=provider)
+        state = build_initial_multi_agent_state(
+            "Can you help with the remote-work policy or check "
+            "today's weather in Riyadh?"
+        )
+        state["task_status"] = TaskStatus.WAITING_FOR_USER
+        state["resume_target"] = AgentName.SUPERVISOR
+        state["pending_interrupt"] = {
+            "type": "routing_clarification",
+            "question": "Which should I handle first?",
+            "options": [
+                "Remote-work policy",
+                "Current weather in Riyadh",
+            ],
+            "interrupt_id": "supervisor-interrupt-1",
+        }
+        state["pending_user_message"] = "Remote-work policy"
+
+        update = await agent.resume(state)
+
+        self.assertEqual(update["supervisor_decision"]["route"], "knowledge")
+        self.assertEqual(provider.calls, [])
+
     def test_prompt_routes_impossible_relationships_to_general(self):
         prompt = " ".join(build_supervisor_system_prompt().split())
 

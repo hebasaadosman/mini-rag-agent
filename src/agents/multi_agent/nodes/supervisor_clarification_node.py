@@ -39,6 +39,7 @@ class SupervisorClarificationNode:
         try:
             return build_supervisor_clarification_update(
                 question=decision.clarification_question,
+                options=decision.clarification_options,
                 interrupt_id_factory=self._interrupt_id_factory,
             )
         except ValueError:

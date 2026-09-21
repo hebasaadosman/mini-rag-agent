@@ -39,6 +39,19 @@ class SupervisorAgent:
         if not user_message:
             return self._failure("user_message cannot be blank.")
 
+        compound_clarification = self._compound_request_clarification(
+            user_message
+        )
+        if compound_clarification is not None:
+            return {
+                "supervisor_decision": compound_clarification.model_dump(
+                    mode="json"
+                ),
+                "active_agent": AgentName.SUPERVISOR.value,
+                "task_status": TaskStatus.RUNNING.value,
+                "error": None,
+            }
+
         try:
             chat_history = self._build_provider_history(
                 state,
@@ -128,6 +141,109 @@ class SupervisorAgent:
             return None
 
     @staticmethod
+    def _compound_request_clarification(
+        user_message: str,
+    ) -> SupervisorDecision | None:
+        normalized = user_message.casefold()
+        has_joiner = any(
+            marker in normalized
+            for marker in (" and ", " or ", " و ", " أو ")
+        )
+        has_live_weather = any(
+            marker in normalized
+            for marker in (
+                "weather",
+                "forecast",
+                "temperature",
+                "طقس",
+                "الجو",
+                "درجة الحرارة",
+            )
+        )
+        has_project_knowledge = any(
+            marker in normalized
+            for marker in (
+                "policy",
+                "policies",
+                "document",
+                "documents",
+                "source",
+                "sources",
+                "remote-work",
+                "سياسة",
+                "مستند",
+                "مصدر",
+            )
+        )
+        if not (has_joiner and has_live_weather and has_project_knowledge):
+            return None
+
+        is_arabic = any("\u0600" <= char <= "\u06ff" for char in user_message)
+        if is_arabic:
+            question = "أي معلومة تريد أولًا؟"
+            options = ["سياسة العمل عن بُعد", "الطقس الحالي في الرياض"]
+        else:
+            question = "Which should I handle first?"
+            options = ["Remote-work policy", "Current weather in Riyadh"]
+
+        return SupervisorDecision(
+            route=SupervisorRoute.CLARIFICATION,
+            reason=SupervisorReason.AMBIGUOUS_REQUEST,
+            confidence=1.0,
+            clarification_question=question,
+            clarification_options=options,
+        )
+
+    @staticmethod
+    def _compound_selection_decision(
+        *,
+        original_request: str,
+        response: str,
+    ) -> SupervisorDecision | None:
+        if SupervisorAgent._compound_request_clarification(
+            original_request
+        ) is None:
+            return None
+
+        normalized_response = response.casefold()
+        selects_weather = any(
+            marker in normalized_response
+            for marker in (
+                "weather",
+                "forecast",
+                "temperature",
+                "طقس",
+                "الجو",
+                "درجة الحرارة",
+            )
+        )
+        selects_knowledge = any(
+            marker in normalized_response
+            for marker in (
+                "policy",
+                "document",
+                "source",
+                "remote-work",
+                "سياسة",
+                "مستند",
+                "مصدر",
+            )
+        )
+        if selects_knowledge and not selects_weather:
+            return SupervisorDecision(
+                route=SupervisorRoute.KNOWLEDGE,
+                reason=SupervisorReason.PROJECT_KNOWLEDGE,
+                confidence=1.0,
+            )
+        if selects_weather and not selects_knowledge:
+            return SupervisorDecision(
+                route=SupervisorRoute.UTILITY,
+                reason=SupervisorReason.EXTERNAL_INFORMATION,
+                confidence=1.0,
+            )
+        return None
+
+    @staticmethod
     def _clarification_fallback(
         user_message: str,
         *,
@@ -177,6 +293,25 @@ class SupervisorAgent:
         original_request = str(state.get("user_message") or "").strip()
         if not original_request:
             return self._failure("The original routing request is missing.")
+        compound_selection = self._compound_selection_decision(
+            original_request=original_request,
+            response=response,
+        )
+        if compound_selection is not None:
+            return {
+                "supervisor_decision": compound_selection.model_dump(
+                    mode="json"
+                ),
+                "active_agent": AgentName.SUPERVISOR.value,
+                "task_status": TaskStatus.RUNNING.value,
+                "resume_target": None,
+                "pending_interrupt": None,
+                "pending_user_message": None,
+                "handoff_count": 0,
+                "handoff_reason": None,
+                "visited_agents": [],
+                "error": None,
+            }
         pending_interrupt = state.get("pending_interrupt")
         clarification_question = (
             str(pending_interrupt.get("question") or "").strip()

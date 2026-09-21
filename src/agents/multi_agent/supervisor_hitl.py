@@ -15,11 +15,13 @@ class SupervisorResumeError(ValueError):
 def build_supervisor_clarification_update(
     *,
     question: str,
+    options: list[str] | None = None,
     interrupt_id_factory: SupervisorInterruptIdFactory | None = None,
 ) -> dict[str, Any]:
     normalized_question = str(question or "").strip()
     if not normalized_question:
         raise ValueError("Supervisor clarification question cannot be blank.")
+    normalized_options = _normalize_options(options or [])
 
     factory = interrupt_id_factory or _new_interrupt_id
     interrupt_id = str(factory() or "").strip()
@@ -29,7 +31,7 @@ def build_supervisor_clarification_update(
     clarification = {
         "type": "routing_clarification",
         "question": normalized_question,
-        "options": [],
+        "options": normalized_options,
     }
     return {
         "active_agent": AgentName.SUPERVISOR.value,
@@ -85,6 +87,22 @@ def get_supervisor_resume_message(state: MultiAgentState) -> str:
             "The supervisor clarification response is missing."
         )
     return response
+
+
+def _normalize_options(options: list[str]) -> list[str]:
+    if not isinstance(options, list):
+        raise ValueError("Supervisor clarification options must be a list.")
+
+    normalized: list[str] = []
+    for option in options:
+        candidate = str(option or "").strip()
+        if not candidate:
+            raise ValueError(
+                "Supervisor clarification options cannot contain blanks."
+            )
+        if candidate not in normalized:
+            normalized.append(candidate)
+    return normalized
 
 
 def _new_interrupt_id() -> str:

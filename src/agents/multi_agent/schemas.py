@@ -37,6 +37,10 @@ class SupervisorDecision(BaseModel):
         min_length=1,
         max_length=500,
     )
+    clarification_options: list[str] = Field(
+        default_factory=list,
+        max_length=5,
+    )
 
     @field_validator("clarification_question")
     @classmethod
@@ -52,6 +56,23 @@ class SupervisorDecision(BaseModel):
             raise ValueError(
                 "clarification_question cannot be blank."
             )
+        return normalized
+
+    @field_validator("clarification_options")
+    @classmethod
+    def normalize_clarification_options(
+        cls,
+        value: list[str],
+    ) -> list[str]:
+        normalized: list[str] = []
+        for option in value:
+            candidate = str(option or "").strip()
+            if not candidate:
+                raise ValueError(
+                    "clarification_options cannot contain blank values."
+                )
+            if candidate not in normalized:
+                normalized.append(candidate)
         return normalized
 
     @model_validator(mode="after")
@@ -93,6 +114,10 @@ class SupervisorDecision(BaseModel):
         if not is_clarification and self.clarification_question is not None:
             raise ValueError(
                 "Only a clarification route may include a question."
+            )
+        if not is_clarification and self.clarification_options:
+            raise ValueError(
+                "Only a clarification route may include options."
             )
 
         return self
