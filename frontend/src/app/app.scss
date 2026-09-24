@@ -461,6 +461,34 @@ textarea:focus {
   margin-bottom: 0;
   white-space: pre-wrap;
 }
+.answer-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+.answer-heading .eyebrow {
+  margin: 0;
+}
+.listen-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  border: 1px solid #3e8d7d;
+  border-radius: 999px;
+  background: #133b34;
+  color: #d7fff5;
+  padding: 0.44rem 0.7rem;
+  font-size: 0.78rem;
+  box-shadow: none;
+}
+.listen-button:hover:not(:disabled) {
+  background: #174f45;
+  box-shadow: none;
+}
+.listen-button span {
+  color: #7be8d8;
+}
 .sources {
   background: #111f31;
 }

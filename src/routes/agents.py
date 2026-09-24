@@ -8,6 +8,7 @@ from fastapi import (
 )
 from typing import Annotated
 from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 
 from agents.knowledge_agent.schemas import (
     KnowledgeAgentRequest,
@@ -20,7 +21,9 @@ from agents.multi_agent.api_schemas import (
     MultiAgentChatRequest,
     MultiAgentResponse,
     MultiAgentResumeRequest,
+    SpeechSynthesisRequest,
 )
+from infrastructure.audio import SpeechSynthesisError
 from controllers import KnowledgeAgentController
 from models.ProjectModel import ProjectModel
 from models.ConversationThreadModel import (
@@ -102,6 +105,24 @@ async def _require_demo_agent_capacity(request: Request, access: ProjectAccess) 
         ) from None
 
 
+async def _require_demo_audio_capacity(request: Request, access: ProjectAccess) -> None:
+    if access.principal_kind != "demo":
+        return
+    limiter = getattr(request.app, "demo_audio_rate_limiter", None)
+    if limiter is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Public demo audio limits are not configured.",
+        )
+    try:
+        await limiter.require_capacity(access.principal_id)
+    except DemoRateLimitExceeded:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="The public demo audio limit has been reached. Please try again shortly.",
+        ) from None
+
+
 def _multi_agent_controller(request: Request, access: ProjectAccess):
     if access.principal_kind == "demo":
         controller = getattr(request.app, "demo_multi_agent_controller", None)
@@ -112,6 +133,52 @@ def _multi_agent_controller(request: Request, access: ProjectAccess):
             )
         return controller
     return request.app.multi_agent_controller
+
+
+@agents_router.get(
+    "/{project_id}/speech/status",
+    status_code=status.HTTP_200_OK,
+    summary="Check whether voice playback is enabled",
+)
+async def speech_status(
+    request: Request,
+    project_id: int,
+    _: ProjectReadAccess,
+):
+    return {"enabled": getattr(request.app, "speech_service", None) is not None}
+
+
+@agents_router.post(
+    "/{project_id}/speech",
+    response_class=Response,
+    status_code=status.HTTP_200_OK,
+    summary="Synthesize a displayed answer with ElevenLabs",
+)
+async def synthesize_speech(
+    request: Request,
+    project_id: int,
+    payload: SpeechSynthesisRequest,
+    project_access: ProjectReadAccess,
+):
+    await _require_demo_audio_capacity(request, project_access)
+    service = getattr(request.app, "speech_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Voice playback is not configured.",
+        )
+    try:
+        audio = await service.synthesize(payload.text)
+    except SpeechSynthesisError as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Voice playback could not be generated.",
+        ) from error
+    return Response(
+        content=audio,
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @agents_router.post(

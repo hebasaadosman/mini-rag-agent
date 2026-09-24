@@ -130,6 +130,16 @@ class Settings(BaseSettings):
     DEMO_SESSION_ABSOLUTE_TIMEOUT_SECONDS: int = 1800
     DEMO_AGENT_REQUESTS_PER_MINUTE: int = 6
 
+    # Optional ElevenLabs text-to-speech. The browser never receives this key;
+    # it requests audio from the authenticated application endpoint instead.
+    ELEVENLABS_TTS_ENABLED: bool = False
+    ELEVENLABS_API_KEY: Optional[str] = None
+    ELEVENLABS_VOICE_ID: Optional[str] = None
+    ELEVENLABS_MODEL_ID: str = "eleven_multilingual_v2"
+    ELEVENLABS_MAX_CHARACTERS: int = 3500
+    ELEVENLABS_TIMEOUT_SECONDS: float = 20.0
+    DEMO_AUDIO_REQUESTS_PER_MINUTE: int = 3
+
     # Outbound email. Credentials are consumed only by the SMTP adapter and
     # are never placed in agent state, prompts, or tool-call arguments.
     SMTP_ENABLED: bool = False
