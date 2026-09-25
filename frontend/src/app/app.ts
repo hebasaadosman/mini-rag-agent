@@ -40,6 +40,10 @@ interface SpeechStatus {
   enabled: boolean;
 }
 
+interface TranscriptionResponse {
+  text: string;
+}
+
 const DEMO_PROJECT_STORAGE_KEY = 'mini-rag-demo-project';
 const DEMO_THREAD_STORAGE_PREFIX = 'mini-rag-demo-thread:';
 
@@ -63,10 +67,15 @@ export class App implements OnInit {
   protected readonly threadId = signal<string | null>(null);
   protected readonly isLoading = signal(false);
   protected readonly isSpeaking = signal(false);
+  protected readonly isRecording = signal(false);
   protected readonly voiceEnabled = signal(false);
   protected readonly message = signal('يمكن بدء جلسة Demo لتجربة الـworkspace الجاهز.');
   protected readonly messageTone = signal<'neutral' | 'success' | 'error'>('neutral');
   protected readonly isDemo = computed(() => this.principal()?.kind === 'demo');
+  private recorder: MediaRecorder | null = null;
+  private recordingStream: MediaStream | null = null;
+  private recordingChunks: Blob[] = [];
+  private recordingTimeout: number | null = null;
 
   async ngOnInit(): Promise<void> {
     await this.restoreSession();
@@ -259,6 +268,87 @@ export class App implements OnInit {
     }
   }
 
+  protected async toggleQuestionRecording(): Promise<void> {
+    if (this.isRecording()) {
+      this.stopQuestionRecording();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      this.setMessage('التسجيل الصوتي غير مدعوم في هذا المتصفح.', 'error');
+      return;
+    }
+    try {
+      this.recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = this.preferredRecordingMimeType();
+      this.recordingChunks = [];
+      this.recorder = mimeType
+        ? new MediaRecorder(this.recordingStream, { mimeType })
+        : new MediaRecorder(this.recordingStream);
+      this.recorder.ondataavailable = (event) => {
+        if (event.data.size) this.recordingChunks.push(event.data);
+      };
+      this.recorder.onstop = () => void this.transcribeRecording();
+      this.recorder.start();
+      this.isRecording.set(true);
+      this.setMessage('جارٍ التسجيل… اضغطِي «إيقاف التسجيل» عند الانتهاء.', 'neutral');
+      this.recordingTimeout = window.setTimeout(() => this.stopQuestionRecording(), 60_000);
+    } catch {
+      this.releaseRecordingResources();
+      this.setMessage('تعذر الوصول إلى الميكروفون. راجعي إذن الميكروفون للمتصفح.', 'error');
+    }
+  }
+
+  private stopQuestionRecording(): void {
+    if (this.recorder?.state === 'recording') this.recorder.stop();
+  }
+
+  private async transcribeRecording(): Promise<void> {
+    const project = this.currentProject();
+    const recorder = this.recorder;
+    const chunks = this.recordingChunks;
+    this.releaseRecordingResources();
+    if (!project || !recorder || !chunks.length) {
+      this.setMessage('لم يُلتقط صوت كافٍ لتحويله إلى نص.', 'error');
+      return;
+    }
+
+    this.isLoading.set(true);
+    try {
+      const type = recorder.mimeType || 'audio/webm';
+      const extension = type.includes('mp4') ? 'm4a' : 'webm';
+      const form = new FormData();
+      form.append('audio', new Blob(chunks, { type }), `question.${extension}`);
+      const response = await firstValueFrom(
+        this.http.post<TranscriptionResponse>(
+          apiUrl(`/api/v1/agents/${project.project_id}/speech/transcribe`),
+          form,
+        ),
+      );
+      this.chatMessage.set(response.text);
+      this.setMessage('تم تحويل السؤال إلى نص. راجعيه ثم أرسليه.', 'success');
+    } catch {
+      this.setMessage('تعذر تحويل التسجيل إلى نص. حاولي مرة أخرى.', 'error');
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  private preferredRecordingMimeType(): string | undefined {
+    return ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find((type) =>
+      MediaRecorder.isTypeSupported(type),
+    );
+  }
+
+  private releaseRecordingResources(): void {
+    if (this.recordingTimeout !== null) window.clearTimeout(this.recordingTimeout);
+    this.recordingTimeout = null;
+    this.recordingStream?.getTracks().forEach((track) => track.stop());
+    this.recordingStream = null;
+    this.recorder = null;
+    this.recordingChunks = [];
+    this.isRecording.set(false);
+  }
+
   private activateDemoProject(projectId: number): void {
     const project = { project_id: projectId, role: 'viewer' as const };
     this.currentProject.set(project);
@@ -293,6 +383,7 @@ export class App implements OnInit {
     this.resumeResponse.set('');
     this.threadId.set(null);
     this.isSpeaking.set(false);
+    this.releaseRecordingResources();
     this.voiceEnabled.set(false);
     sessionStorage.removeItem(DEMO_PROJECT_STORAGE_KEY);
     for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {

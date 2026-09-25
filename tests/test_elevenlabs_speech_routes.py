@@ -1,5 +1,6 @@
 import os
 import unittest
+from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -15,6 +16,10 @@ class _SpeechService:
         self.calls.append(text)
         return b"mock-mp3"
 
+    async def transcribe(self, *, audio, filename, content_type):
+        self.calls.append((audio, filename, content_type))
+        return "سؤال تم تفريغه"
+
 
 class ElevenLabsSpeechRouteTests(unittest.TestCase):
     def setUp(self):
@@ -23,6 +28,7 @@ class ElevenLabsSpeechRouteTests(unittest.TestCase):
         os.environ["AUTH_ENABLED"] = "false"
         os.environ["AUTHZ_ENABLED"] = "false"
         self.app = FastAPI()
+        self.app.settings = SimpleNamespace(DEMO_AUDIO_INPUT_MAX_BYTES=10_000_000)
         self.service = _SpeechService()
         self.app.speech_service = self.service
         self.app.include_router(agents_router)
@@ -73,6 +79,19 @@ class ElevenLabsSpeechRouteTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 503)
+
+    def test_transcription_returns_text_without_exposing_provider_credentials(self):
+        response = self.client.post(
+            "/api/v1/agents/1/speech/transcribe",
+            files={"audio": ("question.webm", b"mock-audio", "audio/webm")},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"text": "سؤال تم تفريغه"})
+        self.assertEqual(
+            self.service.calls,
+            [(b"mock-audio", "question.webm", "audio/webm")],
+        )
 
 
 if __name__ == "__main__":

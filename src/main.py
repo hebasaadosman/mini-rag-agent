@@ -195,6 +195,11 @@ async def startup_db_client():
             limit=settings.DEMO_AUDIO_REQUESTS_PER_MINUTE,
             key_prefix="mini-rag:demo:audio-rate:",
         )
+        app.demo_transcription_rate_limiter = DemoAgentRateLimiter(
+            app.auth_redis,
+            limit=settings.DEMO_TRANSCRIPTION_REQUESTS_PER_MINUTE,
+            key_prefix="mini-rag:demo:transcription-rate:",
+        )
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

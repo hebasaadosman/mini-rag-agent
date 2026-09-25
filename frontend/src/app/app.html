@@ -132,15 +132,29 @@
             placeholder="سؤال عن محتوى المستند التجريبي"
             [disabled]="isLoading() || pendingInteraction()"
           ></textarea
-          ><button
+          ><div style="display: flex; flex-wrap: wrap; gap: 0.65rem; margin-top: 0.8rem">
+            @if (voiceEnabled()) {
+              <button
+                type="button"
+                class="listen-button"
+                (click)="toggleQuestionRecording()"
+                [disabled]="isLoading() || pendingInteraction()"
+                [attr.aria-label]="isRecording() ? 'إيقاف تسجيل السؤال' : 'تسجيل السؤال صوتيًا'"
+              >
+                <span aria-hidden="true">{{ isRecording() ? '■' : '◉' }}</span>
+                {{ isRecording() ? 'إيقاف التسجيل' : 'تسجيل السؤال' }}
+              </button>
+            }
+            <button
             type="button"
-            class="send-button"
+            class="send-button" style="margin-top: 0"
             (click)="sendChat()"
             [disabled]="isLoading() || !chatMessage().trim() || pendingInteraction()"
           >
             <span>{{ isLoading() ? 'جارٍ التحليل…' : 'إرسال السؤال' }}</span
             ><b aria-hidden="true">←</b>
-          </button>
+            </button>
+          </div>
         </div>
         @if (pendingInteraction(); as interaction) {
           <section class="interaction" aria-live="polite">
