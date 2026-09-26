@@ -38,6 +38,10 @@ interface PendingInteraction {
 
 const DEMO_PROJECT_STORAGE_KEY = 'mini-rag-demo-project';
 const DEMO_THREAD_STORAGE_PREFIX = 'mini-rag-demo-thread:';
+const DEFAULT_SUGGESTED_QUESTIONS = [
+  'What does the remote-work policy say?',
+  "Can you help with the remote-work policy or check today's weather in Riyadh?",
+];
 
 @Component({
   imports: [RouterOutlet],
@@ -78,7 +82,7 @@ export class App implements OnInit {
         this.http.post<DemoSessionResponse>(apiUrl('/api/v1/auth/demo'), null),
       );
       this.principal.set(demo);
-      this.suggestedQuestions.set(demo.suggested_questions);
+      this.suggestedQuestions.set(demo.suggested_questions.length ? demo.suggested_questions : DEFAULT_SUGGESTED_QUESTIONS);
       this.activateDemoProject(demo.demo_project_id);
       this.setMessage(
         'الـDemo workspace جاهز. يمكن اختيار سؤال مقترح أو إدخال سؤال جديد.',
@@ -174,6 +178,7 @@ export class App implements OnInit {
       const principal = await firstValueFrom(this.http.get<Principal>(apiUrl('/api/v1/auth/me')));
       this.principal.set(principal);
       if (principal.kind === 'demo' && principal.demo_project_id) {
+        this.suggestedQuestions.set(DEFAULT_SUGGESTED_QUESTIONS);
         this.activateDemoProject(principal.demo_project_id);
         this.setMessage('تمت استعادة جلسة الـDemo.', 'success');
       } else {
