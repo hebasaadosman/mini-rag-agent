@@ -185,21 +185,7 @@
         }
         @if (chatAnswer(); as answer) {
           <section class="answer" aria-live="polite">
-            <div class="answer-heading">
-              <p class="eyebrow">الإجابة</p>
-              @if (voiceEnabled()) {
-                <button
-                  type="button"
-                  class="listen-button"
-                  (click)="playAnswer()"
-                  [disabled]="isSpeaking()"
-                  aria-label="استمع إلى الإجابة"
-                >
-                  <span aria-hidden="true">{{ isSpeaking() ? '◌' : '◉' }}</span>
-                  {{ isSpeaking() ? 'جارٍ التشغيل…' : 'استمع للإجابة' }}
-                </button>
-              }
-            </div>
+            <p class="eyebrow">الإجابة</p>
             <p dir="auto">{{ answer }}</p>
           </section>
         }

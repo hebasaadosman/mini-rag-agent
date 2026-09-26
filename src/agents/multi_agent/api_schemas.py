@@ -29,18 +29,6 @@ class MultiAgentResumeRequest(BaseModel):
         return normalized
 
 
-class SpeechSynthesisRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=5_000)
-
-    @field_validator("text")
-    @classmethod
-    def normalize_text(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("value cannot be blank.")
-        return normalized
-
-
 class MultiAgentResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 

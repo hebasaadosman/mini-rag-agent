@@ -14,27 +14,17 @@ class DemoAgentRateLimiter:
 
     _PREFIX = "mini-rag:demo:agent-rate:"
 
-    def __init__(
-        self,
-        redis_client,
-        *,
-        limit: int,
-        window_seconds: int = 60,
-        key_prefix: str = _PREFIX,
-    ) -> None:
+    def __init__(self, redis_client, *, limit: int, window_seconds: int = 60) -> None:
         if limit < 1 or window_seconds < 1:
             raise ValueError("demo rate-limit values must be positive.")
-        if not key_prefix:
-            raise ValueError("demo rate-limit key prefix is required.")
         self._redis = redis_client
         self._limit = limit
         self._window_seconds = window_seconds
-        self._key_prefix = key_prefix
 
     async def require_capacity(self, principal_id: str) -> None:
         now = int(time.time())
         bucket = now // self._window_seconds
-        key = f"{self._key_prefix}{bucket}:{principal_id}"
+        key = f"{self._PREFIX}{bucket}:{principal_id}"
         count = await self._redis.incr(key)
         if count == 1:
             await self._redis.expire(key, self._window_seconds + 1)

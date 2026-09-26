@@ -32,7 +32,6 @@ from persistence.checkpointing import (
 )
 from utils.async_keyed_lock import PostgresAdvisoryKeyedLock
 from infrastructure.email import create_send_email_tool
-from infrastructure.audio import ElevenLabsSpeechService
 from authentication import OIDCClient, OIDCConfiguration, RedisSessionStore
 from authentication.session_url import resolve_auth_session_redis_url
 from authentication.demo_limits import DemoAgentRateLimiter
@@ -126,15 +125,6 @@ async def startup_db_client():
     # The agent receives only this approved-delivery tool. SMTP credentials
     # remain private inside the infrastructure adapter.
     app.send_email_tool = create_send_email_tool(settings)
-    app.speech_service = None
-    if settings.ELEVENLABS_TTS_ENABLED:
-        app.speech_service = ElevenLabsSpeechService(
-            api_key=settings.ELEVENLABS_API_KEY or "",
-            voice_id=settings.ELEVENLABS_VOICE_ID or "",
-            model_id=settings.ELEVENLABS_MODEL_ID,
-            max_characters=settings.ELEVENLABS_MAX_CHARACTERS,
-            timeout_seconds=settings.ELEVENLABS_TIMEOUT_SECONDS,
-        )
     app.agent_thread_locks = PostgresAdvisoryKeyedLock(
         app.pg_engine
     )
@@ -189,11 +179,6 @@ async def startup_db_client():
         app.demo_agent_rate_limiter = DemoAgentRateLimiter(
             app.auth_redis,
             limit=settings.DEMO_AGENT_REQUESTS_PER_MINUTE,
-        )
-        app.demo_audio_rate_limiter = DemoAgentRateLimiter(
-            app.auth_redis,
-            limit=settings.DEMO_AUDIO_REQUESTS_PER_MINUTE,
-            key_prefix="mini-rag:demo:audio-rate:",
         )
 
 @app.on_event("shutdown")

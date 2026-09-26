@@ -36,10 +36,6 @@ interface PendingInteraction {
   status: string;
 }
 
-interface SpeechStatus {
-  enabled: boolean;
-}
-
 const DEMO_PROJECT_STORAGE_KEY = 'mini-rag-demo-project';
 const DEMO_THREAD_STORAGE_PREFIX = 'mini-rag-demo-thread:';
 
@@ -62,8 +58,6 @@ export class App implements OnInit {
   protected readonly resumeResponse = signal('');
   protected readonly threadId = signal<string | null>(null);
   protected readonly isLoading = signal(false);
-  protected readonly isSpeaking = signal(false);
-  protected readonly voiceEnabled = signal(false);
   protected readonly message = signal('يمكن بدء جلسة Demo لتجربة الـworkspace الجاهز.');
   protected readonly messageTone = signal<'neutral' | 'success' | 'error'>('neutral');
   protected readonly isDemo = computed(() => this.principal()?.kind === 'demo');
@@ -227,38 +221,6 @@ export class App implements OnInit {
     this.setMessage('تمت الإجابة مع المصادر.', 'success');
   }
 
-  protected async playAnswer(): Promise<void> {
-    const project = this.currentProject();
-    const answer = this.chatAnswer();
-    if (!project || !answer || this.isSpeaking()) return;
-
-    this.isSpeaking.set(true);
-    try {
-      const audio = await firstValueFrom(
-        this.http.post(
-          apiUrl(`/api/v1/agents/${project.project_id}/speech`),
-          { text: answer },
-          { responseType: 'blob' },
-        ),
-      );
-      const audioUrl = URL.createObjectURL(audio);
-      const player = new Audio(audioUrl);
-      player.onended = () => {
-        URL.revokeObjectURL(audioUrl);
-        this.isSpeaking.set(false);
-      };
-      player.onerror = () => {
-        URL.revokeObjectURL(audioUrl);
-        this.isSpeaking.set(false);
-        this.setMessage('تعذر تشغيل الصوت. يرجى المحاولة مرة أخرى.', 'error');
-      };
-      await player.play();
-    } catch {
-      this.isSpeaking.set(false);
-      this.setMessage('ميزة الاستماع غير متاحة الآن. يرجى المحاولة لاحقًا.', 'error');
-    }
-  }
-
   private activateDemoProject(projectId: number): void {
     const project = { project_id: projectId, role: 'viewer' as const };
     this.currentProject.set(project);
@@ -268,18 +230,6 @@ export class App implements OnInit {
     this.chatSources.set([]);
     this.pendingInteraction.set(null);
     this.resumeResponse.set('');
-    void this.refreshSpeechAvailability(projectId);
-  }
-
-  private async refreshSpeechAvailability(projectId: number): Promise<void> {
-    try {
-      const status = await firstValueFrom(
-        this.http.get<SpeechStatus>(apiUrl(`/api/v1/agents/${projectId}/speech/status`)),
-      );
-      this.voiceEnabled.set(status.enabled);
-    } catch {
-      this.voiceEnabled.set(false);
-    }
   }
 
   private clearDemoState(): void {
@@ -292,8 +242,6 @@ export class App implements OnInit {
     this.pendingInteraction.set(null);
     this.resumeResponse.set('');
     this.threadId.set(null);
-    this.isSpeaking.set(false);
-    this.voiceEnabled.set(false);
     sessionStorage.removeItem(DEMO_PROJECT_STORAGE_KEY);
     for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
       const key = sessionStorage.key(index);
