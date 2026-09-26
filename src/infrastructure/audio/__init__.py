@@ -1,11 +1,3 @@
-from .elevenlabs import (
-    ElevenLabsSpeechService,
-    SpeechSynthesisError,
-    SpeechTranscriptionError,
-)
+from .elevenlabs import ElevenLabsSpeechService, SpeechSynthesisError
 
-__all__ = [
-    "ElevenLabsSpeechService",
-    "SpeechSynthesisError",
-    "SpeechTranscriptionError",
-]
+__all__ = ["ElevenLabsSpeechService", "SpeechSynthesisError"]

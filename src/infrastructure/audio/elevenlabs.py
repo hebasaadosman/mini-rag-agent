@@ -1,4 +1,4 @@
-"""Server-side ElevenLabs speech client.
+"""Server-side ElevenLabs speech synthesis client.
 
 The API key is intentionally retained here, never in the Angular application.
 """
@@ -12,13 +12,8 @@ class SpeechSynthesisError(RuntimeError):
     """Raised when ElevenLabs cannot provide usable audio."""
 
 
-class SpeechTranscriptionError(RuntimeError):
-    """Raised when ElevenLabs cannot provide a usable transcript."""
-
-
 class ElevenLabsSpeechService:
     _BASE_URL = "https://api.elevenlabs.io/v1/text-to-speech"
-    _TRANSCRIPTION_URL = "https://api.elevenlabs.io/v1/speech-to-text"
 
     def __init__(
         self,
@@ -64,36 +59,3 @@ class ElevenLabsSpeechService:
         if not response.content:
             raise SpeechSynthesisError("ElevenLabs returned empty audio.")
         return response.content
-
-    async def transcribe(
-        self,
-        *,
-        audio: bytes,
-        filename: str,
-        content_type: str,
-    ) -> str:
-        if not audio:
-            raise SpeechTranscriptionError("Audio cannot be blank.")
-
-        try:
-            async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
-                response = await client.post(
-                    self._TRANSCRIPTION_URL,
-                    headers={"xi-api-key": self._api_key},
-                    data={"model_id": "scribe_v2"},
-                    files={
-                        "file": (
-                            filename or "question.webm",
-                            audio,
-                            content_type or "audio/webm",
-                        )
-                    },
-                )
-                response.raise_for_status()
-                transcript = response.json().get("text", "").strip()
-        except (httpx.HTTPError, ValueError) as error:
-            raise SpeechTranscriptionError("ElevenLabs speech transcription failed.") from error
-
-        if not transcript:
-            raise SpeechTranscriptionError("ElevenLabs returned an empty transcript.")
-        return transcript

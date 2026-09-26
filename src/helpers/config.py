@@ -139,8 +139,6 @@ class Settings(BaseSettings):
     ELEVENLABS_MAX_CHARACTERS: int = 3500
     ELEVENLABS_TIMEOUT_SECONDS: float = 20.0
     DEMO_AUDIO_REQUESTS_PER_MINUTE: int = 3
-    DEMO_TRANSCRIPTION_REQUESTS_PER_MINUTE: int = 3
-    DEMO_AUDIO_INPUT_MAX_BYTES: int = 10_000_000
 
     # Outbound email. Credentials are consumed only by the SMTP adapter and
     # are never placed in agent state, prompts, or tool-call arguments.

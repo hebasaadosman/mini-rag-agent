@@ -1,12 +1,10 @@
 from fastapi import (
     APIRouter,
     Depends,
-    File,
     HTTPException,
     Query,
     Request,
     status,
-    UploadFile,
 )
 from typing import Annotated
 from fastapi.responses import StreamingResponse
@@ -25,7 +23,7 @@ from agents.multi_agent.api_schemas import (
     MultiAgentResumeRequest,
     SpeechSynthesisRequest,
 )
-from infrastructure.audio import SpeechSynthesisError, SpeechTranscriptionError
+from infrastructure.audio import SpeechSynthesisError
 from controllers import KnowledgeAgentController
 from models.ProjectModel import ProjectModel
 from models.ConversationThreadModel import (
@@ -125,24 +123,6 @@ async def _require_demo_audio_capacity(request: Request, access: ProjectAccess) 
         ) from None
 
 
-async def _require_demo_transcription_capacity(request: Request, access: ProjectAccess) -> None:
-    if access.principal_kind != "demo":
-        return
-    limiter = getattr(request.app, "demo_transcription_rate_limiter", None)
-    if limiter is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Public demo transcription limits are not configured.",
-        )
-    try:
-        await limiter.require_capacity(access.principal_id)
-    except DemoRateLimitExceeded:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="The public demo transcription limit has been reached. Please try again shortly.",
-        ) from None
-
-
 def _multi_agent_controller(request: Request, access: ProjectAccess):
     if access.principal_kind == "demo":
         controller = getattr(request.app, "demo_multi_agent_controller", None)
@@ -199,45 +179,6 @@ async def synthesize_speech(
         media_type="audio/mpeg",
         headers={"Cache-Control": "no-store"},
     )
-
-
-@agents_router.post(
-    "/{project_id}/speech/transcribe",
-    status_code=status.HTTP_200_OK,
-    summary="Transcribe a recorded question with ElevenLabs",
-)
-async def transcribe_speech(
-    request: Request,
-    project_id: int,
-    project_access: ProjectReadAccess,
-    audio: UploadFile = File(...),
-):
-    await _require_demo_transcription_capacity(request, project_access)
-    service = getattr(request.app, "speech_service", None)
-    if service is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Voice input is not configured.",
-        )
-
-    audio_bytes = await audio.read()
-    if len(audio_bytes) > request.app.settings.DEMO_AUDIO_INPUT_MAX_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Recorded audio is too large.",
-        )
-    try:
-        transcript = await service.transcribe(
-            audio=audio_bytes,
-            filename=audio.filename or "question.webm",
-            content_type=audio.content_type or "audio/webm",
-        )
-    except SpeechTranscriptionError as error:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Voice input could not be transcribed.",
-        ) from error
-    return {"text": transcript}
 
 
 @agents_router.post(
